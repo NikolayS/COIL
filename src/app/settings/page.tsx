@@ -4,10 +4,35 @@
 // ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_email_day text DEFAULT 'sunday';
 // ALTER TABLE settings ADD COLUMN IF NOT EXISTS report_email text;
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
+
+// All IANA timezones supported by the browser
+function getAllTimezones(): string[] {
+  try {
+    return (Intl as unknown as { supportedValuesOf: (key: string) => string[] })
+      .supportedValuesOf("timeZone");
+  } catch {
+    // Fallback for browsers that don't support supportedValuesOf
+    return [
+      "UTC",
+      "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+      "America/Anchorage", "America/Honolulu", "America/Toronto", "America/Vancouver",
+      "America/Mexico_City", "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
+      "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Rome", "Europe/Madrid",
+      "Europe/Amsterdam", "Europe/Stockholm", "Europe/Oslo", "Europe/Helsinki",
+      "Europe/Warsaw", "Europe/Prague", "Europe/Vienna", "Europe/Zurich",
+      "Europe/Moscow", "Europe/Istanbul",
+      "Asia/Dubai", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Singapore",
+      "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Hong_Kong",
+      "Australia/Sydney", "Australia/Melbourne", "Australia/Perth",
+      "Pacific/Auckland", "Pacific/Fiji",
+      "Africa/Cairo", "Africa/Nairobi", "Africa/Johannesburg",
+    ];
+  }
+}
 
 function formatHour(h: number): string {
   if (h === 0) return "12 AM";
@@ -31,6 +56,13 @@ export default function SettingsPage() {
   const [emailHour, setEmailHour] = useState(18);
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
+
+  const [tzSearch, setTzSearch] = useState("");
+  const allTimezones = useMemo(() => getAllTimezones(), []);
+  const filteredTimezones = useMemo(() => {
+    const q = tzSearch.toLowerCase();
+    return q ? allTimezones.filter((tz) => tz.toLowerCase().includes(q)) : allTimezones;
+  }, [tzSearch, allTimezones]);
 
   const [sending, setSending] = useState(false);
   const [testOverrideEmail, setTestOverrideEmail] = useState("");
@@ -226,10 +258,51 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            {/* Timezone (read-only) */}
+            {/* Timezone — searchable selector */}
             <div>
               <p className="text-xs text-[--text-dim] mb-1">Timezone</p>
-              <p className="text-sm font-mono text-[--text-muted]">{timezone}</p>
+              <input
+                type="text"
+                value={tzSearch}
+                onChange={(e) => setTzSearch(e.target.value)}
+                placeholder={timezone}
+                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors mb-1"
+                style={{ color: "var(--text)", border: "1px solid var(--border)" }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              />
+              {tzSearch && (
+                <div
+                  className="rounded-lg border overflow-y-auto max-h-40"
+                  style={{ borderColor: "var(--border)", backgroundColor: "var(--bg)" }}
+                >
+                  {filteredTimezones.length === 0 ? (
+                    <p className="text-xs font-mono text-[--text-faint] px-3 py-2">No match</p>
+                  ) : (
+                    filteredTimezones.map((tz) => (
+                      <button
+                        key={tz}
+                        onClick={() => {
+                          setTimezone(tz);
+                          setTzSearch("");
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-mono transition-colors"
+                        style={{
+                          color: tz === timezone ? "var(--gold)" : "var(--text-muted)",
+                          backgroundColor: tz === timezone ? "var(--gold-bg)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-card)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = tz === timezone ? "var(--gold-bg)" : "transparent")}
+                      >
+                        {tz}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              {!tzSearch && (
+                <p className="text-xs font-mono text-[--text-muted]">{timezone}</p>
+              )}
             </div>
           </div>
 
