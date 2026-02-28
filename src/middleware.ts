@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return supabaseResponse;
 
   // Redirect unauthenticated users to /login
-  if (!user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth")) {
+  if (!user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth/callback")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
