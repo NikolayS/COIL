@@ -73,3 +73,19 @@ create policy "users see own weeks" on public.weeks
 
 grant all on public.weeks to authenticated;
 grant select on public.weeks to anon;
+
+-- Settings table
+create table if not exists public.settings (
+  user_id uuid primary key,
+  weekly_email_enabled bool not null default false,
+  weekly_email_hour int not null default 20,
+  timezone text not null default 'UTC',
+  updated_at timestamptz not null default now()
+);
+
+alter table public.settings enable row level security;
+
+create policy "users manage own settings" on public.settings
+  for all using ((select auth.uid()) = user_id);
+
+grant all on public.settings to authenticated;

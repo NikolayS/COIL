@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { generateReport } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -223,58 +224,6 @@ async function archiveInSupabase(userId: string, data: WeekData) {
     { user_id: userId, week_of: weekOf, data, archived: true, updated_at: new Date().toISOString() },
     { onConflict: "user_id,week_of" }
   );
-}
-
-// ── Generate Report ────────────────────────────────────────────────────────
-
-function generateReport(data: WeekData): string {
-  const weekOf = new Date(data.weekOf);
-  const score = calcScore(data);
-  const lines: string[] = [
-    `# COIL Weekly Report — Week of ${formatWeekOf(weekOf)}`,
-    ``,
-    `## Weekly Score: ${score}/${TOTAL_POSSIBLE}`,
-    ``,
-    `## Daily Territory Scores`,
-    `| Territory | Mon | Tue | Wed | Thu | Fri | Sat | Sun | Total |`,
-    `|-----------|-----|-----|-----|-----|-----|-----|-----|-------|`,
-  ];
-  for (const t of TERRITORIES) {
-    const row = DAYS.map((d) => (data.days[d]?.territories[t.key] ? "✓" : "·")).join(" | ");
-    const total = calcTerritoryScore(data, t.key);
-    lines.push(`| ${t.label.padEnd(9)} | ${row} | ${total}/7 |`);
-  }
-  const totals = DAYS.map((d) => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
-  lines.push(`| **Total** | ${totals.join(" | ")} | **${score}/${TOTAL_POSSIBLE}** |`);
-  lines.push(``);
-  lines.push(`## Drinks`);
-  const drinkRow = DAYS.map((d) => data.days[d]?.drinks ?? 0).join(" | ");
-  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly |`);
-  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------|`);
-  lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
-  lines.push(``);
-  lines.push(`## Daily Journal`);
-  for (const day of DAYS) {
-    const d = data.days[day];
-    if (!d) continue;
-    const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
-    lines.push(`### ${DAY_LABELS[day]}${wolf}`);
-    if (d.journal) lines.push(d.journal);
-    if (d.reflection) lines.push(`*Better: ${d.reflection}*`);
-    lines.push(``);
-  }
-  lines.push(`## Weekly Reflection`);
-  const w = data.weekly;
-  if (w.wins) lines.push(`**Wins:** ${w.wins}`);
-  if (w.gratitude) lines.push(`**Gratitude:** ${w.gratitude}`);
-  if (w.lessons) lines.push(`**Lessons:** ${w.lessons}`);
-  if (w.focusAchieved) lines.push(`**Focus achieved:** ${w.focusAchieved}`);
-  if (w.focusNext) lines.push(`**Focus next week:** ${w.focusNext}`);
-  if (w.stretchNext) lines.push(`**Stretch next week:** ${w.stretchNext}`);
-  if (w.onTrack) lines.push(`**On track:** ${w.onTrack}`);
-  if (w.cupOverflowing) lines.push(`**Cup overflowing:** ${w.cupOverflowing}`);
-  if (w.improve) lines.push(`**Areas to improve:** ${w.improve}`);
-  return lines.join("\n");
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
