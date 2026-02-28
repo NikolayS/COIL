@@ -296,7 +296,16 @@ function DrinkCounter({
             <Plus size={14} className="text-[--text-muted]" />
           </button>
         </div>
-        <span className="text-sm text-[--text-dim]">Weekly: {weeklyTotal}</span>
+        <span className="text-sm text-[--text-dim]">
+          {weeklyTotal > 20
+            ? <>Weekly: {weeklyTotal} 🤨 sure about that?</>
+            : weeklyTotal > 14
+            ? <>Weekly: {weeklyTotal} 🍺🍺 rough week</>
+            : weeklyTotal > 7
+            ? <>Weekly: {weeklyTotal} 🥴 easy tiger</>
+            : <>Weekly: {weeklyTotal}</>
+          }
+        </span>
       </div>
     </div>
   );
