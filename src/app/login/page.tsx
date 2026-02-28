@@ -54,18 +54,20 @@ export default function LoginPage() {
             <div>
               <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">Email</p>
               <input
-                type="email"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                required
                 className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
               />
             </div>
             {error && <p className="text-sm" style={{ color: "var(--health)" }}>{error}</p>}
             <button
               type="submit"
-              disabled={loading || !email}
+              disabled={loading || !email.includes("@")}
               className="w-full py-3.5 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
               style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
             >
