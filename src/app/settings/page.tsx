@@ -66,6 +66,7 @@ export default function SettingsPage() {
 
   const [sending, setSending] = useState(false);
   const [testOverrideEmail, setTestOverrideEmail] = useState("");
+  const [testWeekChoice, setTestWeekChoice] = useState<"current" | "previous">("current");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
@@ -139,7 +140,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, overrideEmail }),
+        body: JSON.stringify({ userId: user.id, overrideEmail, weekChoice: testWeekChoice }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -333,6 +334,26 @@ export default function SettingsPage() {
                 onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
                 onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
               />
+            </div>
+
+            <div>
+              <p className="text-xs text-[--text-dim] mb-2">Week</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["current", "previous"] as const).map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() => setTestWeekChoice(choice)}
+                    className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                    style={{
+                      borderColor: testWeekChoice === choice ? "var(--gold)" : "var(--border)",
+                      backgroundColor: testWeekChoice === choice ? "var(--gold-bg)" : "transparent",
+                      color: testWeekChoice === choice ? "var(--gold)" : "var(--text-muted)",
+                    }}
+                  >
+                    {choice.charAt(0).toUpperCase() + choice.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
