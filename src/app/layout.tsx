@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "COIL",
   description: "Daily Territory Tracker & Journal",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export const viewport: Viewport = {
@@ -23,8 +26,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
-              var theme = localStorage.getItem('coil_theme') || 'dark';
-              document.documentElement.setAttribute('data-theme', theme);
+              var t = localStorage.getItem('coil_theme') || 'system';
+              var resolved = t === 'system'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : t;
+              document.documentElement.setAttribute('data-theme', resolved);
             })();
           `
         }} />
