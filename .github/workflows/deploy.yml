@@ -20,6 +20,12 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
+
+            # Update Supabase (force-recreate picks up any compose changes)
+            cd /opt/supabase
+            docker compose --env-file .env up -d --force-recreate
+
+            # Update Next.js app
             cd /opt/coil
             git fetch origin
             git reset --hard origin/main
@@ -29,7 +35,8 @@ jobs:
             docker run -d \
               --name coil \
               --restart unless-stopped \
-              -p 3000:3000 \
+              -p 127.0.0.1:3000:3000 \
               --env-file .env.local \
               coil-app
             echo "Deploy complete: $(date -u)"
+
