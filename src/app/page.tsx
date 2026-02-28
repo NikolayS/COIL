@@ -840,7 +840,7 @@ export default function CoilApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekData === null]);
 
-  // Auto-save: demo → localStorage; auth → Supabase (debounced 500ms)
+  // Auto-save: demo → localStorage; auth → Supabase (immediate, no debounce)
   useEffect(() => {
     if (!weekData) return;
     if (isDemo) {
@@ -851,14 +851,14 @@ export default function CoilApp() {
     }
     if (!user) return;
     setSaveStatus("saving");
+    // Cancel any pending save and run immediately
     if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(async () => {
-      const timeoutId = setTimeout(() => {
-        setSaveStatus("timeout");
-        setSaveError("Timed out");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-      }, 5000);
-      const err = await syncCurrentToSupabase(user.id, weekData);
+    const timeoutId = setTimeout(() => {
+      setSaveStatus("timeout");
+      setSaveError("Timed out");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }, 5000);
+    syncCurrentToSupabase(user.id, weekData).then((err) => {
       clearTimeout(timeoutId);
       if (err) {
         setSaveError(err);
@@ -869,22 +869,8 @@ export default function CoilApp() {
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 1500);
       }
-    }, 500);
+    });
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Flush pending save immediately on page unload
-  useEffect(() => {
-    if (!user || !weekData) return;
-    const handleUnload = () => {
-      if (syncTimer.current) {
-        clearTimeout(syncTimer.current);
-        syncTimer.current = null;
-      }
-      syncCurrentToSupabase(user.id, weekData);
-    };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => window.removeEventListener("beforeunload", handleUnload);
-  }, [user, weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — auth check pending
   if (!weekData) {
