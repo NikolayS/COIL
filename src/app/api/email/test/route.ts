@@ -12,7 +12,9 @@ function getMondayOfWeek(date: Date): Date {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId } = await request.json();
+  const body = await request.json();
+  const { userId, overrideEmail } = body as { userId: string; overrideEmail?: string | null };
+
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -25,10 +27,20 @@ export async function POST(request: NextRequest) {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // Get user email
+  // Get user's auth email and saved report_email
   const { data: userData } = await supabase.auth.admin.getUserById(userId);
-  const email = userData?.user?.email;
-  if (!email) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  const authEmail = userData?.user?.email;
+  if (!authEmail) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  // Load saved report_email setting
+  const { data: settings } = await supabase
+    .from("settings")
+    .select("report_email")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  // Priority: inline override > saved report_email > auth email
+  const email = overrideEmail?.trim() || settings?.report_email || authEmail;
 
   // Try current week, then previous week
   const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
