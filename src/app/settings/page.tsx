@@ -77,7 +77,6 @@ export default function SettingsPage() {
         return;
       }
       setUser(user);
-      setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
       const { data } = await supabase
         .from("settings")
@@ -85,15 +84,19 @@ export default function SettingsPage() {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       if (data) {
-        setEmailEnabled(data.weekly_email_enabled);
+        // weekly_email_enabled: treat null as true (default on)
+        setEmailEnabled(data.weekly_email_enabled ?? true);
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
-        if (data.timezone) setTimezone(data.timezone);
-        // report_email: use saved value, or fall back to auth email
+        // saved timezone wins over browser detection; fall back to browser if not saved
+        setTimezone(data.timezone || browserTz);
         setReportEmail(data.report_email ?? user.email ?? "");
       } else {
-        // New user — pre-fill with auth email
+        // New user — use browser timezone and auth email as defaults
+        setTimezone(browserTz);
         setReportEmail(user.email ?? "");
       }
       setLoading(false);
@@ -104,7 +107,7 @@ export default function SettingsPage() {
     if (!user) return;
     setSaving(true);
     const supabase = createClient();
-    await supabase.from("settings").upsert(
+    const { error } = await supabase.from("settings").upsert(
       {
         user_id: user.id,
         weekly_email_enabled: emailEnabled,
@@ -117,8 +120,13 @@ export default function SettingsPage() {
       { onConflict: "user_id" }
     );
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (error) {
+      setTestError(`Save failed: ${error.message}`);
+      setTimeout(() => setTestError(null), 5000);
+    } else {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   const handleTestEmail = async () => {
