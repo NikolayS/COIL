@@ -737,7 +737,17 @@ export default function CoilApp() {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
-      if (!user) return;
+
+      if (!user) {
+        // Demo/guest mode: always start with empty local state so previous
+        // authenticated user's data is never visible.
+        const fresh = emptyWeekData(getMondayOfWeek(new Date()));
+        setWeekData(fresh);
+        setArchive([]);
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(ARCHIVE_KEY);
+        return;
+      }
 
       // Authenticated: clear any localStorage data from previous/other accounts
       // and load exclusively from Supabase (source of truth)
