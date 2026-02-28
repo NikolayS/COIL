@@ -738,19 +738,24 @@ export default function CoilApp() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
       if (!user) return;
-      // Hydrate from Supabase (overrides localStorage)
+
+      // Authenticated: clear any localStorage data from previous/other accounts
+      // and load exclusively from Supabase (source of truth)
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ARCHIVE_KEY);
+
       const [remoteWeek, remoteArchive] = await Promise.all([
         fetchCurrentFromSupabase(user.id),
         fetchArchiveFromSupabase(user.id),
       ]);
-      if (remoteWeek) {
-        setWeekData(remoteWeek);
-        saveCurrent(remoteWeek);
-      }
-      if (remoteArchive.length > 0) {
-        setArchive(remoteArchive);
-        saveArchive(remoteArchive);
-      }
+
+      const freshWeek = remoteWeek ?? emptyWeekData(getMondayOfWeek(new Date()));
+      setWeekData(freshWeek);
+      saveCurrent(freshWeek);
+
+      const freshArchive = remoteArchive;
+      setArchive(freshArchive);
+      saveArchive(freshArchive);
     });
   }, []);
 
