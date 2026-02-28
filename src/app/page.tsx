@@ -335,7 +335,7 @@ function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfMo
             <button
               key={key}
               onClick={() => toggle(key)}
-              className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
+              className="py-3 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
               style={{
                 borderColor: active ? "var(--gold)" : "var(--border)",
                 backgroundColor: active ? "var(--gold-bg)" : "transparent",
@@ -367,14 +367,14 @@ function DrinkCounter({
         <div className="flex items-center gap-4">
           <button
             onClick={() => onChange(Math.max(0, value - 1))}
-            className="w-8 h-8 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
+            className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
           >
             <Minus size={14} className="text-[--text-muted]" />
           </button>
           <span className="font-mono text-2xl font-medium w-8 text-center" style={{color:"var(--gold)"}}>{value}</span>
           <button
             onClick={() => onChange(value + 1)}
-            className="w-8 h-8 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
+            className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
           >
             <Plus size={14} className="text-[--text-muted]" />
           </button>
@@ -845,6 +845,7 @@ export default function CoilApp() {
   const weekOf = formatWeekOf(new Date(weekData.weekOf));
 
   const handleArchive = () => {
+    if (!confirm("Archive this week and start fresh? You won't be able to edit it after archiving.")) return;
     const newArchive: ArchivedWeek[] = [
       ...archive,
       { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
@@ -880,7 +881,7 @@ export default function CoilApp() {
               </div>
               <button
                 onClick={toggleTheme}
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
                 aria-label={`Theme: ${theme} (click to cycle)`}
                 title={`Theme: ${theme}`}
@@ -890,7 +891,7 @@ export default function CoilApp() {
               <button
                 onClick={handleSignOut}
                 title={user ? `Signed in as ${user.email}` : "Demo mode"}
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors relative"
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors relative"
                 style={{backgroundColor:"var(--bg-card)", border:`1px solid ${user ? "var(--self-border)" : "var(--border)"}`, color: user ? "var(--self)" : "var(--text-muted)"}}
                 aria-label="Sign out"
               >
