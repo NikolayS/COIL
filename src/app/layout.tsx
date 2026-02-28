@@ -1,30 +1,14 @@
-import type { Metadata } from "next";
-import { Playfair_Display, DM_Mono, Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-playfair",
-  display: "swap",
-});
-
-const dmMono = DM_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "COIL",
   description: "Daily Territory Tracker & Journal",
-  manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
   themeColor: "#1a1a18",
 };
 
@@ -34,8 +18,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${playfair.variable} ${dmMono.variable} ${inter.variable}`}>
-      <body className="bg-[#1a1a18] text-[#e8e0d0] min-h-screen antialiased">
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              var theme = localStorage.getItem('coil_theme') || 'dark';
+              document.documentElement.setAttribute('data-theme', theme);
+            })();
+          `
+        }} />
+      </head>
+      <body>
         {children}
       </body>
     </html>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Check, Archive, RotateCcw, ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -218,7 +218,7 @@ function TerritoryRow({
   return (
     <button
       onClick={onToggle}
-      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[#242420] border border-[#2e2e2a] active:bg-[#2a2a26]"
+      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[#2a2a26]"
       style={{ borderColor: checked ? territory.color + "60" : undefined }}
     >
       <div className="flex items-center gap-3">
@@ -245,7 +245,7 @@ function TerritoryRow({
 function WolfCheck({ value, onChange }: { value: WolfMode; onChange: (v: WolfMode) => void }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-3">
+      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">
         🐺 Wolf Check — Where did I show up?
       </p>
       <div className="grid grid-cols-4 gap-2">
@@ -279,24 +279,24 @@ function DrinkCounter({
 }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-3">🥃 Drinks Today</p>
-      <div className="flex items-center justify-between bg-[#242420] rounded-xl px-4 py-3 border border-[#2e2e2a]">
+      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">🥃 Drinks Today</p>
+      <div className="flex items-center justify-between bg-[--bg-card] rounded-xl px-4 py-3 border border-[--border]">
         <div className="flex items-center gap-4">
           <button
             onClick={() => onChange(Math.max(0, value - 1))}
-            className="w-8 h-8 rounded-full bg-[#1a1a18] border border-[#2e2e2a] flex items-center justify-center active:scale-90 transition-transform"
+            className="w-8 h-8 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
           >
-            <Minus size={14} className="text-[#6b6557]" />
+            <Minus size={14} className="text-[--text-muted]" />
           </button>
           <span className="font-mono text-2xl font-medium text-[#c9a84c] w-8 text-center">{value}</span>
           <button
             onClick={() => onChange(value + 1)}
-            className="w-8 h-8 rounded-full bg-[#1a1a18] border border-[#2e2e2a] flex items-center justify-center active:scale-90 transition-transform"
+            className="w-8 h-8 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
           >
-            <Plus size={14} className="text-[#6b6557]" />
+            <Plus size={14} className="text-[--text-muted]" />
           </button>
         </div>
-        <span className="text-sm text-[#4a4540]">Weekly: {weeklyTotal}</span>
+        <span className="text-sm text-[--text-dim]">Weekly: {weeklyTotal}</span>
       </div>
     </div>
   );
@@ -315,12 +315,12 @@ function JournalField({
 }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-2">{label}</p>
+      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">{label}</p>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[#1e1e1c] border border-[#2e2e2a] rounded-xl px-4 py-3 text-[15px] text-[#e8e0d0] placeholder-[#3a3530] focus:outline-none focus:border-[#c9a84c40] transition-colors"
+        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[#e8e0d0] placeholder-[#3a3530] focus:outline-none focus:border-[#c9a84c40] transition-colors"
       />
     </div>
   );
@@ -386,7 +386,7 @@ function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) 
 
       {/* Day score */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase">
+        <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">
           Territories — {DAY_LABELS[activeDay]}
         </p>
         <span className="font-mono text-sm text-[#c9a84c]">{dayScore}/5</span>
@@ -453,26 +453,26 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
   return (
     <div className="space-y-6">
       {/* Territory breakdown */}
-      <div className="bg-[#242420] rounded-2xl p-4 border border-[#2e2e2a] space-y-3">
-        <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase">Territory Breakdown</p>
+      <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
+        <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Territory Breakdown</p>
         {TERRITORIES.map((t) => {
           const score = calcTerritoryScore(data, t.key);
           const pct = (score / 7) * 100;
           return (
             <div key={t.key} className="flex items-center gap-3">
               <span className={`text-sm font-medium w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
-              <div className="flex-1 h-1.5 bg-[#1a1a18] rounded-full overflow-hidden">
+              <div className="flex-1 h-1.5 bg-[--bg] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{ width: `${pct}%`, backgroundColor: t.color }}
                 />
               </div>
-              <span className="font-mono text-xs text-[#4a4540] w-8 text-right">{score}/7</span>
+              <span className="font-mono text-xs text-[--text-dim] w-8 text-right">{score}/7</span>
             </div>
           );
         })}
-        <div className="pt-2 border-t border-[#2e2e2a] flex items-center gap-2 text-sm">
-          <span className="text-[#6b6557]">🥃 Drinks</span>
+        <div className="pt-2 border-t border-[--border] flex items-center gap-2 text-sm">
+          <span className="text-[--text-muted]">🥃 Drinks</span>
           <span className="font-mono text-[#e8e0d0]">{weeklyDrinks} this week</span>
         </div>
       </div>
@@ -512,7 +512,7 @@ function ExportTab({
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-[#6b6557] leading-relaxed mb-4">
+        <p className="text-sm text-[--text-muted] leading-relaxed mb-4">
           Copy your full COIL report as formatted text. Paste it into a chat for AI-guided reflection, or save it for your records.
         </p>
         <button
@@ -542,8 +542,8 @@ function ExportTab({
       </div>
 
       {/* Preview */}
-      <div className="bg-[#1e1e1c] rounded-2xl p-4 border border-[#2e2e2a] overflow-auto max-h-64">
-        <pre className="text-xs text-[#4a4540] font-mono whitespace-pre-wrap leading-relaxed">{report}</pre>
+      <div className="bg-[--bg-input] rounded-2xl p-4 border border-[--border] overflow-auto max-h-64">
+        <pre className="text-xs text-[--text-dim] font-mono whitespace-pre-wrap leading-relaxed">{report}</pre>
       </div>
     </div>
   );
@@ -555,8 +555,8 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
   if (archive.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-[#4a4540] text-sm">No archived weeks yet.</p>
-        <p className="text-[#3a3530] text-xs mt-2">
+        <p className="text-[--text-dim] text-sm">No archived weeks yet.</p>
+        <p className="text-[--text-faint] text-xs mt-2">
           When you finish a week, go to Export → "Archive & New Week" to save it here.
         </p>
       </div>
@@ -569,36 +569,36 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
         const score = calcScore(week.data);
         const isOpen = expanded === week.weekOf;
         return (
-          <div key={week.weekOf} className="bg-[#242420] rounded-2xl border border-[#2e2e2a] overflow-hidden">
+          <div key={week.weekOf} className="bg-[--bg-card] rounded-2xl border border-[--border] overflow-hidden">
             <button
               onClick={() => setExpanded(isOpen ? null : week.weekOf)}
               className="w-full flex items-center justify-between px-4 py-4"
             >
               <div className="text-left">
                 <p className="text-sm font-medium">Week of {formatWeekOf(new Date(week.weekOf))}</p>
-                <p className="text-xs font-mono text-[#6b6557] mt-0.5">{score}/{TOTAL_POSSIBLE} points</p>
+                <p className="text-xs font-mono text-[--text-muted] mt-0.5">{score}/{TOTAL_POSSIBLE} points</p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="h-1 w-16 bg-[#1a1a18] rounded-full overflow-hidden">
+                <div className="h-1 w-16 bg-[--bg] rounded-full overflow-hidden">
                   <div
                     className="h-full bg-[#c9a84c] rounded-full"
                     style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
                   />
                 </div>
-                {isOpen ? <ChevronUp size={16} className="text-[#4a4540]" /> : <ChevronDown size={16} className="text-[#4a4540]" />}
+                {isOpen ? <ChevronUp size={16} className="text-[--text-dim]" /> : <ChevronDown size={16} className="text-[--text-dim]" />}
               </div>
             </button>
             {isOpen && (
-              <div className="px-4 pb-4 space-y-3 border-t border-[#2e2e2a] pt-3">
+              <div className="px-4 pb-4 space-y-3 border-t border-[--border] pt-3">
                 {TERRITORIES.map((t) => {
                   const s = calcTerritoryScore(week.data, t.key);
                   return (
                     <div key={t.key} className="flex items-center gap-3">
                       <span className={`text-xs w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
-                      <div className="flex-1 h-1 bg-[#1a1a18] rounded-full overflow-hidden">
+                      <div className="flex-1 h-1 bg-[--bg] rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${(s / 7) * 100}%`, backgroundColor: t.color }} />
                       </div>
-                      <span className="font-mono text-xs text-[#4a4540]">{s}/7</span>
+                      <span className="font-mono text-xs text-[--text-dim]">{s}/7</span>
                     </div>
                   );
                 })}
@@ -622,6 +622,20 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const saved = (localStorage.getItem("coil_theme") as "dark" | "light") || "dark";
+    setTheme(saved);
+    document.documentElement.setAttribute("data-theme", saved);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("coil_theme", next);
+  };
   const [weekData, setWeekData] = useState<WeekData>(() => loadCurrent());
   const [archive, setArchive] = useState<ArchivedWeek[]>(() => loadArchive());
   const [saved, setSaved] = useState(false);
@@ -658,25 +672,25 @@ export default function CoilApp() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1a1a18] flex flex-col">
+    <div className="min-h-screen bg-[--bg] flex flex-col">
       <div className="max-w-md mx-auto w-full flex flex-col min-h-screen">
         {/* Header */}
-        <div className="px-5 pt-8 pb-4">
+        <div className="px-5 pt-8 pb-4 relative">
           <div className="flex items-start justify-between mb-1">
-            <h1 className="font-display text-3xl font-bold tracking-tight text-[#c9a84c]">COIL</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="text-right">
-              <p className="text-[10px] font-mono tracking-[0.15em] text-[#4a4540] uppercase">Week of</p>
-              <p className="text-sm font-mono text-[#6b6557]">{weekOf}</p>
+              <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
+              <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
             </div>
           </div>
-          <p className="text-[11px] font-mono tracking-[0.12em] text-[#3a3530] uppercase">
+          <p className="text-[11px] font-mono tracking-[0.12em] text-[--text-faint] uppercase">
             Daily Territory Tracker & Journal
           </p>
 
           {/* Progress bar + score */}
           <div className="mt-4">
             <div className="flex items-center justify-between mb-1.5">
-              <div className="h-1 flex-1 bg-[#242420] rounded-full overflow-hidden mr-4">
+              <div className="h-1 flex-1 bg-[--bg-card] rounded-full overflow-hidden mr-4">
                 <div
                   className="h-full bg-[#c9a84c] rounded-full transition-all duration-700"
                   style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
@@ -684,13 +698,21 @@ export default function CoilApp() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xl font-medium text-[#c9a84c]">{score}</span>
-                <span className="font-mono text-sm text-[#3a3530]">/{TOTAL_POSSIBLE}</span>
+                <span className="font-mono text-sm text-[--text-faint]">/{TOTAL_POSSIBLE}</span>
               </div>
             </div>
             {saved && (
-              <p className="text-[10px] font-mono text-[#4a9e6b] tracking-wider">✓ SAVED</p>
+              <p className="text-[10px] font-mono tracking-wider" style={{color:"var(--self)"}}>✓ SAVED</p>
             )}
           </div>
+          <button
+            onClick={toggleTheme}
+            className="absolute top-8 right-5 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{backgroundColor: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)"}}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
         </div>
 
         {/* Tabs */}

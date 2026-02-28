@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+/* ── Dark theme (default) ── */
+:root, [data-theme="dark"] {
   --gold: #c9a84c;
   --gold-dim: #8a6f2e;
   --bg: #1a1a18;
@@ -10,6 +11,7 @@
   --text: #e8e0d0;
   --text-muted: #6b6557;
   --text-dim: #4a4540;
+  --text-faint: #3a3530;
 
   --self: #4a9e6b;
   --health: #c85555;
@@ -18,53 +20,51 @@
   --business: #8b5cf6;
 }
 
+/* ── Light theme ── */
+[data-theme="light"] {
+  --gold: #9a7230;
+  --gold-dim: #c9a84c;
+  --bg: #f5f2ec;
+  --bg-card: #ffffff;
+  --bg-input: #f0ece4;
+  --border: #ddd8cc;
+  --text: #1a1a18;
+  --text-muted: #6b6355;
+  --text-dim: #9a9080;
+  --text-faint: #b5ac9e;
+
+  --self: #2d8050;
+  --health: #b03030;
+  --relationships: #a86020;
+  --wealth: #2c5fa0;
+  --business: #6b3fd4;
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  font-family: var(--font-inter), sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
-}
-
-.font-display {
-  font-family: var(--font-playfair), serif;
-}
-
-.font-mono {
-  font-family: var(--font-mono), monospace;
+  transition: background 0.2s ease, color 0.2s ease;
+  min-height: 100vh;
 }
 
 textarea {
   resize: none;
   field-sizing: content;
-  min-height: 80px;
+  min-height: 76px;
+  font-family: inherit;
 }
 
-/* Toggle animation */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
 .territory-toggle {
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.15s ease;
 }
-
-.territory-toggle:active {
-  transform: scale(0.92);
-}
-
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-
-/* Tab underline animation */
-.tab-indicator {
-  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
+.territory-toggle:active { transform: scale(0.96); }
