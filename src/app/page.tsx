@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
@@ -838,6 +838,17 @@ export default function CoilApp() {
               >
                 {theme === "dark" ? <Moon size={14} /> : theme === "light" ? <Sun size={14} /> : <Monitor size={14} />}
               </button>
+              {user && (
+                <a
+                  href="/settings"
+                  title="Settings"
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                  aria-label="Settings"
+                >
+                  <Settings size={14} />
+                </a>
+              )}
               <button
                 onClick={handleSignOut}
                 title={user ? `Signed in as ${user.email}` : "Demo mode"}
