@@ -675,12 +675,22 @@ export default function CoilApp() {
     <div className="min-h-screen bg-[--bg] flex flex-col">
       <div className="max-w-md mx-auto w-full flex flex-col min-h-screen">
         {/* Header */}
-        <div className="px-5 pt-8 pb-4 relative">
+        <div className="px-5 pt-8 pb-4">
           <div className="flex items-start justify-between mb-1">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
-            <div className="text-right">
-              <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
-              <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
+            <div className="flex items-start gap-3">
+              <div className="text-right">
+                <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
+                <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
+              </div>
+              <button
+                onClick={toggleTheme}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                aria-label="Toggle theme"
+              >
+                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
             </div>
           </div>
           <p className="text-[11px] font-mono tracking-[0.12em] text-[--text-faint] uppercase">
@@ -705,14 +715,7 @@ export default function CoilApp() {
               <p className="text-[10px] font-mono tracking-wider" style={{color:"var(--self)"}}>✓ SAVED</p>
             )}
           </div>
-          <button
-            onClick={toggleTheme}
-            className="absolute top-8 right-5 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-            style={{backgroundColor: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)"}}
-            aria-label="Toggle theme"
-          >
-            {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
+
         </div>
 
         {/* Tabs */}
