@@ -73,12 +73,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (!weekRow?.data) {
-    return NextResponse.json({ error: "No week data found" }, { status: 404 });
-  }
+  let emailSubject: string;
+  let emailBody: string;
 
-  const weekData = weekRow.data as WeekData;
-  const report = generateReport(weekData);
+  if (!weekRow?.data) {
+    // No week data yet — send a connectivity test email anyway
+    emailSubject = `[TEST - no data yet] COIL Email Test`;
+    emailBody = `This is a connectivity test for COIL weekly reports.\n\nNo week data exists yet — add some data to get a real report.\n\nIf you received this email, your email delivery is working correctly.`;
+    usedMonday = "none";
+  } else {
+    const weekData = weekRow.data as WeekData;
+    const report = generateReport(weekData);
+    emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
+    emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -89,8 +97,8 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       from: "COIL <noreply@coil.5am.team>",
       to: [email],
-      subject: `[TEST] COIL Weekly Report — Week of ${usedMonday}`,
-      text: `[THIS IS A TEST EMAIL]\n\n${report}`,
+      subject: emailSubject,
+      text: emailBody,
     }),
   });
 

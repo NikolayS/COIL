@@ -908,7 +908,7 @@ export default function CoilApp() {
               >
                 {theme === "dark" ? <Moon size={14} /> : theme === "light" ? <Sun size={14} /> : <Monitor size={14} />}
               </button>
-              {user && (
+              {user ? (
                 <a
                   href="/settings"
                   title="Settings"
@@ -918,6 +918,15 @@ export default function CoilApp() {
                 >
                   <Settings size={14} />
                 </a>
+              ) : (
+                <span
+                  title="Sign in to access settings"
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)", opacity:0.35, cursor:"not-allowed"}}
+                  aria-label="Settings (sign in required)"
+                >
+                  <Settings size={14} />
+                </span>
               )}
               <button
                 onClick={handleSignOut}
