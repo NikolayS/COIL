@@ -720,9 +720,7 @@ export default function CoilApp() {
                 <span className="font-mono text-sm text-[--text-faint]">/{TOTAL_POSSIBLE}</span>
               </div>
             </div>
-            {saved && (
-              <p className="text-[10px] font-mono tracking-wider" style={{color:"var(--self)"}}>✓ SAVED</p>
-            )}
+            <p className="text-[10px] font-mono tracking-wider transition-opacity duration-300" style={{color:"var(--self)", opacity: saved ? 1 : 0}}>✓ SAVED</p>
           </div>
 
         </div>
