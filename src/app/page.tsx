@@ -8,12 +8,13 @@ import type { User } from "@supabase/supabase-js";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
-type WolfMode = "wise" | "open" | "loving" | "fierce" | null;
+type WolfMode = "wise" | "open" | "loving" | "fierce";
+type WolfModes = WolfMode[];
 type TabKey = "daily" | "weekly" | "export" | "past";
 
 interface DayData {
   territories: Record<TerritoryKey, boolean>;
-  wolf: WolfMode;
+  wolf: WolfModes;
   drinks: number;
   journal: string;
   reflection: string;
@@ -88,7 +89,7 @@ function getTodayKey(): string {
 function emptyDayData(): DayData {
   return {
     territories: { self: false, health: false, relationships: false, wealth: false, business: false },
-    wolf: null,
+    wolf: [],
     drinks: 0,
     journal: "",
     reflection: "",
@@ -236,7 +237,7 @@ function generateReport(data: WeekData): string {
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const wolf = d.wolf ? ` · Wolf: ${d.wolf}` : "";
+    const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
     lines.push(`### ${DAY_LABELS[day]}${wolf}`);
     if (d.journal) lines.push(d.journal);
     if (d.reflection) lines.push(`*Better: ${d.reflection}*`);
@@ -294,27 +295,37 @@ function TerritoryRow({
   );
 }
 
-function WolfCheck({ value, onChange }: { value: WolfMode; onChange: (v: WolfMode) => void }) {
+function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfModes) => void }) {
+  const toggle = (key: WolfMode) => {
+    if (value.includes(key)) {
+      onChange(value.filter((k) => k !== key));
+    } else {
+      onChange([...value, key]);
+    }
+  };
   return (
     <div>
       <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">
         🐺 Wolf Check — Where did I show up?
       </p>
       <div className="grid grid-cols-4 gap-2">
-        {WOLF_MODES.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => onChange(value === key ? null : key)}
-            className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
-            style={{
-              borderColor: value === key ? "var(--gold)" : "var(--border)",
-              backgroundColor: value === key ? "var(--gold-bg)" : "transparent",
-              color: value === key ? "var(--gold)" : "var(--text-muted)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
+        {WOLF_MODES.map(({ key, label }) => {
+          const active = value.includes(key);
+          return (
+            <button
+              key={key}
+              onClick={() => toggle(key)}
+              className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
+              style={{
+                borderColor: active ? "var(--gold)" : "var(--border)",
+                backgroundColor: active ? "var(--gold-bg)" : "transparent",
+                color: active ? "var(--gold)" : "var(--text-muted)",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
