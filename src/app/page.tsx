@@ -125,7 +125,8 @@ function calcWeekDrinks(data: WeekData): number {
 }
 
 // ── Storage ────────────────────────────────────────────────────────────────
-// localStorage is used as a write-through cache; Supabase is source of truth.
+// Demo/guest mode: localStorage only.
+// Authenticated mode: Supabase only — localStorage never touched.
 
 const STORAGE_KEY = "coil_current_week";
 const ARCHIVE_KEY = "coil_archived_weeks";
@@ -141,7 +142,8 @@ function migrateWeekData(data: WeekData): WeekData {
   return { ...data, days };
 }
 
-function loadCurrent(): WeekData {
+// Demo-only helpers
+function demoLoadCurrent(): WeekData {
   if (typeof window === "undefined") return emptyWeekData(getMondayOfWeek(new Date()));
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -150,11 +152,11 @@ function loadCurrent(): WeekData {
   return emptyWeekData(getMondayOfWeek(new Date()));
 }
 
-function saveCurrent(data: WeekData) {
+function demoSaveCurrent(data: WeekData) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 }
 
-function loadArchive(): ArchivedWeek[] {
+function demoLoadArchive(): ArchivedWeek[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
@@ -163,8 +165,15 @@ function loadArchive(): ArchivedWeek[] {
   return [];
 }
 
-function saveArchive(weeks: ArchivedWeek[]) {
+function demoSaveArchive(weeks: ArchivedWeek[]) {
   try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(weeks)); } catch {}
+}
+
+function demoClearAll() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ARCHIVE_KEY);
+  } catch {}
 }
 
 // ── Supabase sync ──────────────────────────────────────────────────────────
@@ -713,6 +722,11 @@ export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [user, setUser] = useState<User | null>(null);
+  // null = loading (auth check pending); WeekData = ready
+  const [weekData, setWeekData] = useState<WeekData | null>(null);
+  const [archive, setArchive] = useState<ArchivedWeek[]>([]);
+  const [saved, setSaved] = useState(false);
+  const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -728,44 +742,26 @@ export default function CoilApp() {
     localStorage.setItem("coil_theme", next);
   };
 
-  const [weekData, setWeekData] = useState<WeekData>(() => loadCurrent());
-  const [archive, setArchive] = useState<ArchivedWeek[]>(() => loadArchive());
-  const [saved, setSaved] = useState(false);
-
-  // Get current user and hydrate from Supabase
+  // Auth check → populate state from the right source, no flicker
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
-      setUser(user);
-
-      if (!user) {
-        // Demo/guest mode: always start with empty local state so previous
-        // authenticated user's data is never visible.
-        const fresh = emptyWeekData(getMondayOfWeek(new Date()));
-        setWeekData(fresh);
-        setArchive([]);
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(ARCHIVE_KEY);
-        return;
+      if (user) {
+        // Authenticated: Supabase is the only source. Never touch localStorage.
+        setUser(user);
+        demoClearAll(); // wipe any leftover demo data
+        const [remoteWeek, remoteArchive] = await Promise.all([
+          fetchCurrentFromSupabase(user.id),
+          fetchArchiveFromSupabase(user.id),
+        ]);
+        setWeekData(remoteWeek ?? emptyWeekData(getMondayOfWeek(new Date())));
+        setArchive(remoteArchive);
+      } else {
+        // Demo/guest: localStorage only, never touches Supabase.
+        setUser(null);
+        setWeekData(demoLoadCurrent());
+        setArchive(demoLoadArchive());
       }
-
-      // Authenticated: clear any localStorage data from previous/other accounts
-      // and load exclusively from Supabase (source of truth)
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(ARCHIVE_KEY);
-
-      const [remoteWeek, remoteArchive] = await Promise.all([
-        fetchCurrentFromSupabase(user.id),
-        fetchArchiveFromSupabase(user.id),
-      ]);
-
-      const freshWeek = remoteWeek ?? emptyWeekData(getMondayOfWeek(new Date()));
-      setWeekData(freshWeek);
-      saveCurrent(freshWeek);
-
-      const freshArchive = remoteArchive;
-      setArchive(freshArchive);
-      saveArchive(freshArchive);
     });
   }, []);
 
@@ -776,8 +772,9 @@ export default function CoilApp() {
     window.location.href = "/login";
   };
 
-  // Auto-archive on week boundary
+  // Auto-archive on week boundary (runs once data is loaded)
   useEffect(() => {
+    if (!weekData) return;
     const currentMonday = getMondayOfWeek(new Date()).toISOString();
     if (weekData.weekOf !== currentMonday) {
       const hasContent = calcScore(weekData) > 0 ||
@@ -791,27 +788,38 @@ export default function CoilApp() {
           { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
         ];
         setArchive(newArchive);
-        saveArchive(newArchive);
+        if (isDemo) demoSaveArchive(newArchive);
         if (user) archiveInSupabase(user.id, weekData);
       }
       const fresh = emptyWeekData(getMondayOfWeek(new Date()));
       setWeekData(fresh);
-      saveCurrent(fresh);
+      if (isDemo) demoSaveCurrent(fresh);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [weekData === null]);
 
-  // Auto-save (localStorage immediate, Supabase debounced 2s)
+  // Auto-save: demo → localStorage; auth → Supabase (debounced 2s)
   useEffect(() => {
-    saveCurrent(weekData);
+    if (!weekData) return;
     setSaved(true);
     const t = setTimeout(() => setSaved(false), 1200);
-    if (user) {
+    if (isDemo) {
+      demoSaveCurrent(weekData);
+    } else if (user) {
       if (syncTimer.current) clearTimeout(syncTimer.current);
       syncTimer.current = setTimeout(() => syncCurrentToSupabase(user.id, weekData), 2000);
     }
     return () => clearTimeout(t);
-  }, [weekData, user]);
+  }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Loading state — auth check pending
+  if (!weekData) {
+    return (
+      <div className="min-h-screen bg-[--bg] flex items-center justify-center">
+        <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading…</p>
+      </div>
+    );
+  }
 
   const score = calcScore(weekData);
   const weekOf = formatWeekOf(new Date(weekData.weekOf));
@@ -822,11 +830,11 @@ export default function CoilApp() {
       { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
     ];
     setArchive(newArchive);
-    saveArchive(newArchive);
+    if (isDemo) demoSaveArchive(newArchive);
     if (user) archiveInSupabase(user.id, weekData);
     const newWeek = emptyWeekData(getMondayOfWeek(new Date()));
     setWeekData(newWeek);
-    saveCurrent(newWeek);
+    if (isDemo) demoSaveCurrent(newWeek);
     if (user) syncCurrentToSupabase(user.id, newWeek);
     setActiveTab("daily");
   };
@@ -835,7 +843,7 @@ export default function CoilApp() {
     if (!confirm("Reset all data for this week? This cannot be undone.")) return;
     const fresh = emptyWeekData(getMondayOfWeek(new Date()));
     setWeekData(fresh);
-    saveCurrent(fresh);
+    if (isDemo) demoSaveCurrent(fresh);
   };
 
   return (
