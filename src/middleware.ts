@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   const isDemo = request.cookies.get("coil_demo")?.value === "1";
 
   // Redirect unauthenticated users to /login
-  if (!user && !isDemo && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth/callback") && !request.nextUrl.pathname.startsWith("/api/cron")) {
+  if (!user && !isDemo && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth/callback") && !request.nextUrl.pathname.startsWith("/api/cron") && !request.nextUrl.pathname.startsWith("/api/email")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
