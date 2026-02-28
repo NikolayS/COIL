@@ -23,7 +23,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError(error.message);
+      setError(typeof error.message === "string" ? error.message : "Failed to send magic link. Try again.");
       setLoading(false);
     } else {
       setSent(true);
