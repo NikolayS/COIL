@@ -130,11 +130,22 @@ function calcWeekDrinks(data: WeekData): number {
 const STORAGE_KEY = "coil_current_week";
 const ARCHIVE_KEY = "coil_archived_weeks";
 
+function migrateWeekData(data: WeekData): WeekData {
+  // Migrate wolf from old single string to array
+  const days = Object.fromEntries(
+    Object.entries(data.days).map(([k, d]) => [
+      k,
+      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [] },
+    ])
+  );
+  return { ...data, days };
+}
+
 function loadCurrent(): WeekData {
   if (typeof window === "undefined") return emptyWeekData(getMondayOfWeek(new Date()));
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return migrateWeekData(JSON.parse(raw));
   } catch {}
   return emptyWeekData(getMondayOfWeek(new Date()));
 }
@@ -147,7 +158,7 @@ function loadArchive(): ArchivedWeek[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(ARCHIVE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return (JSON.parse(raw) as ArchivedWeek[]).map((w) => ({ ...w, data: migrateWeekData(w.data) }));
   } catch {}
   return [];
 }
@@ -177,7 +188,7 @@ async function fetchCurrentFromSupabase(userId: string): Promise<WeekData | null
     .eq("week_of", monday)
     .eq("archived", false)
     .maybeSingle();
-  return data?.data ?? null;
+  return data?.data ? migrateWeekData(data.data as WeekData) : null;
 }
 
 async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]> {
