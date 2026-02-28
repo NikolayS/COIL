@@ -838,7 +838,7 @@ export default function CoilApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekData === null]);
 
-  // Auto-save: demo → localStorage; auth → Supabase (debounced 2s)
+  // Auto-save: demo → localStorage; auth → Supabase (debounced 500ms)
   useEffect(() => {
     if (!weekData) return;
     setSaved(true);
@@ -847,10 +847,24 @@ export default function CoilApp() {
       demoSaveCurrent(weekData);
     } else if (user) {
       if (syncTimer.current) clearTimeout(syncTimer.current);
-      syncTimer.current = setTimeout(() => syncCurrentToSupabase(user.id, weekData), 2000);
+      syncTimer.current = setTimeout(() => syncCurrentToSupabase(user.id, weekData), 500);
     }
     return () => clearTimeout(t);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush pending save immediately on page unload
+  useEffect(() => {
+    if (!user || !weekData) return;
+    const handleUnload = () => {
+      if (syncTimer.current) {
+        clearTimeout(syncTimer.current);
+        syncTimer.current = null;
+      }
+      syncCurrentToSupabase(user.id, weekData);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [user, weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — auth check pending
   if (!weekData) {
