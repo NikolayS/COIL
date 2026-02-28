@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to coil.5am.team
+    runs-on: ubuntu-latest
+    needs: [] # CI runs in separate workflow; deploy triggers after push to main
+    # Only deploy when CI passes — CI workflow must complete first
+    # (GitHub runs workflows independently; use workflow_run trigger if strict ordering needed)
+    steps:
+      - name: Wait for CI
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/coil
+            git pull origin main
+            docker build -t coil-app .
+            docker stop coil || true
+            docker rm coil || true
+            docker run -d \
+              --name coil \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              --env-file .env.local \
+              coil-app
+            echo "Deploy complete: $(date)"
