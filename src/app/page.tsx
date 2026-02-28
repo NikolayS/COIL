@@ -472,6 +472,7 @@ function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) 
               >
                 {score}
               </span>
+              {isToday && <span className="w-1 h-1 rounded-full" style={{backgroundColor: 'var(--gold)'}} />}
             </button>
           );
         })}

@@ -58,17 +58,16 @@ export default function LoginPage() {
           <div className="space-y-3">
             <form onSubmit={handleSend} className="space-y-4">
               <div>
-                <label htmlFor="email" className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">Email</label>
+                <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">Email</p>
                 <input
-                  id="email"
-                  type="text"
+                  type="email"
                   inputMode="email"
                   autoCapitalize="none"
                   autoCorrect="off"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus-visible:ring-2 focus-visible:ring-[--gold] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg] transition-colors"
+                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
                 />
               </div>
               {error && <p className="text-sm" style={{ color: "var(--health)" }}>{error}</p>}
@@ -118,7 +117,7 @@ export default function LoginPage() {
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 placeholder="481960"
-                className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[24px] font-mono text-center tracking-[0.3em] text-[--text] placeholder-[--text-faint] focus:outline-none focus-visible:ring-2 focus-visible:ring-[--gold] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg] transition-colors"
+                className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[24px] font-mono text-center tracking-[0.3em] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
               />
             </div>
             {error && <p className="text-sm" style={{ color: "var(--health)" }}>{error}</p>}
