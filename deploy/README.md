@@ -39,6 +39,17 @@ certbot --nginx -d coil.5am.team
 nginx -t && systemctl reload nginx
 ```
 
+### 4. Weekly email cron
+
+```bash
+# Add to server crontab (crontab -e):
+# Every Sunday at 8pm UTC
+0 20 * * 0 curl -s -X POST https://coil.5am.team/api/cron/weekly-email \
+  -H "Authorization: Bearer $CRON_SECRET" > /var/log/coil-cron.log 2>&1
+```
+
+Set `CRON_SECRET` and `RESEND_API_KEY` in `.env.local` on the server.
+
 ## Redeploy (app updates)
 
 ```bash
