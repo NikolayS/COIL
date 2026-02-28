@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   // Fetch all users with weekly email enabled
   const { data: settings, error: settingsError } = await supabase
     .from("settings")
-    .select("user_id, weekly_email_hour, timezone")
+    .select("user_id, weekly_email_hour, weekly_email_day, report_email, timezone")
     .eq("weekly_email_enabled", true);
 
   if (settingsError) {
@@ -55,11 +55,19 @@ export async function POST(request: NextRequest) {
   }
 
   const monday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  const nowDay = new Date().getDay(); // 0=Sun, 6=Sat
   let sent = 0;
 
   for (const setting of settings) {
-    const email = emailMap.get(setting.user_id);
-    if (!email) continue;
+    const authEmail = emailMap.get(setting.user_id);
+    if (!authEmail) continue;
+    // Use report_email if set, otherwise fall back to auth email
+    const email = (setting.report_email as string | null) || authEmail;
+
+    // Check if today matches user's preferred delivery day (default: sunday)
+    const prefDay = (setting.weekly_email_day as string | null) ?? "sunday";
+    const sendOnDay = prefDay === "saturday" ? 6 : 0;
+    if (nowDay !== sendOnDay) continue;
 
     // Fetch current week data
     const { data: weekRow } = await supabase
