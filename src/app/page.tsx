@@ -649,6 +649,30 @@ export default function CoilApp() {
   const [archive, setArchive] = useState<ArchivedWeek[]>(() => loadArchive());
   const [saved, setSaved] = useState(false);
 
+  // Auto-archive on week boundary: if stored week != current week, archive and start fresh
+  useEffect(() => {
+    const currentMonday = getMondayOfWeek(new Date()).toISOString();
+    if (weekData.weekOf !== currentMonday) {
+      const hasContent = calcScore(weekData) > 0 ||
+        Object.values(weekData.weekly).some(v => v.trim() !== "") ||
+        Object.values(weekData.days).some(d =>
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.drinks > 0
+        );
+      if (hasContent) {
+        const newArchive: ArchivedWeek[] = [
+          ...archive,
+          { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
+        ];
+        setArchive(newArchive);
+        saveArchive(newArchive);
+      }
+      const fresh = emptyWeekData(getMondayOfWeek(new Date()));
+      setWeekData(fresh);
+      saveCurrent(fresh);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-save
   useEffect(() => {
     saveCurrent(weekData);
