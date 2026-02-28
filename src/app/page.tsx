@@ -291,7 +291,6 @@ function TerritoryRow({
   return (
     <button
       onClick={onToggle}
-      aria-checked={checked}
       className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
       style={{ borderColor: checked ? territory.color + "60" : undefined }}
     >
@@ -307,7 +306,7 @@ function TerritoryRow({
         }}
       >
         {checked && (
-          <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+          <svg className="check-icon" width="12" height="9" viewBox="0 0 12 9" fill="none">
             <path d="M1 4L4.5 7.5L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
@@ -336,7 +335,6 @@ function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfMo
             <button
               key={key}
               onClick={() => toggle(key)}
-              aria-pressed={active}
               className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
               style={{
                 borderColor: active ? "var(--gold)" : "var(--border)",
@@ -411,10 +409,11 @@ function JournalField({
     <div>
       <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">{label}</p>
       <textarea
+        rows={3}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus-visible:ring-2 focus-visible:ring-[--gold] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg] transition-colors"
+        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
       />
     </div>
   );
@@ -555,7 +554,7 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
           return (
             <div key={t.key} className="flex items-center gap-3">
               <span className={`text-sm font-medium w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
-              <div className="flex-1 h-1.5 bg-[--bg] rounded-full overflow-hidden">
+              <div className="flex-1 h-2.5 bg-[--bg] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{ width: `${pct}%`, backgroundColor: t.color }}
@@ -679,7 +678,7 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
                 <p className="text-xs font-mono text-[--text-muted] mt-0.5">{score}/{TOTAL_POSSIBLE} points</p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="h-1 w-16 bg-[--bg] rounded-full overflow-hidden">
+                <div className="h-2 w-24 bg-[--bg] rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%`, backgroundColor: "var(--gold)" }}
@@ -869,9 +868,9 @@ export default function CoilApp() {
 
   return (
     <div className="min-h-screen bg-[--bg] flex flex-col">
-      <div className="max-w-md mx-auto w-full flex flex-col min-h-screen">
+      <div className="max-w-md md:max-w-lg lg:max-w-xl mx-auto w-full flex flex-col min-h-screen">
         {/* Header */}
-        <div className="px-5 pt-8 pb-4">
+        <div className="px-5 md:px-8 pt-8 pb-4">
           <div className="flex items-start justify-between mb-1">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="flex items-start gap-3">
@@ -922,20 +921,17 @@ export default function CoilApp() {
                 <span className="font-mono text-sm text-[--text-faint]">/{TOTAL_POSSIBLE}</span>
               </div>
             </div>
-            <p className="text-[10px] font-mono tracking-wider transition-opacity duration-300" style={{color:"var(--self)", opacity: 0, userSelect: "none"}}>✓ SAVED</p>
           </div>
 
         </div>
 
         {/* Tabs */}
-        <div className="px-5 border-b border-[--border]">
-          <div className="flex gap-0 relative" role="tablist">
+        <div className="px-5 md:px-8 border-b border-[--border]">
+          <div className="flex gap-0 relative">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                role="tab"
-                aria-selected={activeTab === tab.key}
                 className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
                 style={{ color: activeTab === tab.key ? "var(--gold)" : "var(--text-dim)" }}
               >
@@ -949,7 +945,7 @@ export default function CoilApp() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto px-5 py-5" role="tabpanel">
+        <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "daily" && (
             <DailyTab data={weekData} onChange={setWeekData} />
           )}
