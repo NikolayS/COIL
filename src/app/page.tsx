@@ -291,6 +291,8 @@ function TerritoryRow({
   return (
     <button
       onClick={onToggle}
+      role="checkbox"
+      aria-checked={checked}
       className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
       style={{ borderColor: checked ? territory.color + "60" : undefined }}
     >
@@ -335,6 +337,7 @@ function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfMo
             <button
               key={key}
               onClick={() => toggle(key)}
+              aria-pressed={active}
               className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
               style={{
                 borderColor: active ? "var(--gold)" : "var(--border)",
@@ -412,7 +415,7 @@ function JournalField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
+        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus-visible:ring-2 focus-visible:ring-[--gold] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg] transition-colors"
       />
     </div>
   );
@@ -927,11 +930,13 @@ export default function CoilApp() {
 
         {/* Tabs */}
         <div className="px-5 border-b border-[--border]">
-          <div className="flex gap-0 relative">
+          <div className="flex gap-0 relative" role="tablist">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
+                role="tab"
+                aria-selected={activeTab === tab.key}
                 className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
                 style={{ color: activeTab === tab.key ? "var(--gold)" : "var(--text-dim)" }}
               >
@@ -945,7 +950,7 @@ export default function CoilApp() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto px-5 py-5" role="tabpanel">
           {activeTab === "daily" && (
             <DailyTab data={weekData} onChange={setWeekData} />
           )}
