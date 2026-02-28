@@ -25,6 +25,21 @@ jobs:
             cd /opt/supabase
             docker compose --env-file .env up -d --force-recreate
 
+            # Apply any new DB migrations (idempotent)
+            AUTH_PW=$(grep AUTH_ADMIN_PW .env | cut -d= -f2)
+            docker exec supabase-db-1 psql -U postgres -d postgres -v auth_pw="$AUTH_PW" << 'SQLEOF'
+            DO $$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='weeks' AND policyname='users see own weeks') THEN
+                CREATE POLICY "users see own weeks" ON public.weeks FOR ALL USING ((select auth.uid()) = user_id);
+              END IF;
+              IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
+                CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
+              END IF;
+            END $$;
+            GRANT ALL ON public.weeks TO authenticated;
+            GRANT ALL ON public.settings TO authenticated;
+            SQLEOF
+
             # Update Next.js app
             cd /opt/coil
             git fetch origin
