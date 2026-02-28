@@ -2,6 +2,7 @@
 
 // NOTE: Run Supabase migration:
 // ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_email_day text DEFAULT 'sunday';
+// ALTER TABLE settings ADD COLUMN IF NOT EXISTS report_email text;
 
 import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
@@ -29,8 +30,10 @@ export default function SettingsPage() {
   const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
   const [emailHour, setEmailHour] = useState(18);
   const [timezone, setTimezone] = useState("UTC");
+  const [reportEmail, setReportEmail] = useState("");
 
   const [sending, setSending] = useState(false);
+  const [testOverrideEmail, setTestOverrideEmail] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
@@ -55,6 +58,11 @@ export default function SettingsPage() {
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
         if (data.timezone) setTimezone(data.timezone);
+        // report_email: use saved value, or fall back to auth email
+        setReportEmail(data.report_email ?? user.email ?? "");
+      } else {
+        // New user — pre-fill with auth email
+        setReportEmail(user.email ?? "");
       }
       setLoading(false);
     });
@@ -70,6 +78,7 @@ export default function SettingsPage() {
         weekly_email_enabled: emailEnabled,
         weekly_email_hour: emailHour,
         weekly_email_day: emailDay,
+        report_email: reportEmail || user.email,
         timezone,
         updated_at: new Date().toISOString(),
       },
@@ -85,11 +94,12 @@ export default function SettingsPage() {
     setSending(true);
     setTestResult(null);
     setTestError(null);
+    const overrideEmail = testOverrideEmail.trim() || null;
     try {
       const res = await fetch("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id, overrideEmail }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -130,10 +140,11 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-6">
-          {/* Weekly email toggle */}
+          {/* Weekly email card */}
           <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
             <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Weekly Email Report</p>
 
+            {/* Toggle */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-[--text]">Send weekly email</span>
               <button
@@ -158,7 +169,7 @@ export default function SettingsPage() {
                       <button
                         key={day}
                         onClick={() => setEmailDay(day)}
-                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95 capitalize"
+                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
                         style={{
                           borderColor: emailDay === day ? "var(--gold)" : "var(--border)",
                           backgroundColor: emailDay === day ? "var(--gold-bg)" : "transparent",
@@ -194,38 +205,75 @@ export default function SettingsPage() {
               </>
             )}
 
+            {/* Report email — editable */}
+            <div>
+              <p className="text-xs text-[--text-dim] mb-1">Report email</p>
+              <input
+                type="email"
+                value={reportEmail}
+                onChange={(e) => setReportEmail(e.target.value)}
+                placeholder={user?.email ?? ""}
+                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors"
+                style={{
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              />
+              <p className="text-xs text-[--text-faint] mt-1">
+                Defaults to your account email if left unchanged.
+              </p>
+            </div>
+
             {/* Timezone (read-only) */}
             <div>
               <p className="text-xs text-[--text-dim] mb-1">Timezone</p>
               <p className="text-sm font-mono text-[--text-muted]">{timezone}</p>
             </div>
-
-            {/* Email (read-only) */}
-            <div>
-              <p className="text-xs text-[--text-dim] mb-1">Email address</p>
-              <p className="text-sm font-mono text-[--text-muted]">{user?.email}</p>
-            </div>
           </div>
 
-          {/* Test email button */}
-          <button
-            onClick={handleTestEmail}
-            disabled={sending}
-            className="w-full py-3 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
-            style={{ backgroundColor: "var(--bg-card)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
-          >
-            {sending ? "Sending..." : "Send Test Email"}
-          </button>
-          {testResult && (
-            <p className="text-xs font-mono text-center" style={{ color: "var(--green, #4ade80)" }}>
-              {testResult}
-            </p>
-          )}
-          {testError && (
-            <p className="text-xs font-mono text-center" style={{ color: "var(--red, #f87171)" }}>
-              {testError}
-            </p>
-          )}
+          {/* Test email card */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
+            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Send Test Email</p>
+
+            <div>
+              <p className="text-xs text-[--text-dim] mb-1">Send to (leave blank to use report email)</p>
+              <input
+                type="email"
+                value={testOverrideEmail}
+                onChange={(e) => setTestOverrideEmail(e.target.value)}
+                placeholder={reportEmail || user?.email || ""}
+                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors"
+                style={{
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              />
+            </div>
+
+            <button
+              onClick={handleTestEmail}
+              disabled={sending}
+              className="w-full py-3 rounded-xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+              style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+            >
+              {sending ? "Sending..." : "Send Test"}
+            </button>
+
+            {testResult && (
+              <p className="text-xs font-mono text-center" style={{ color: "var(--green, #4ade80)" }}>
+                {testResult}
+              </p>
+            )}
+            {testError && (
+              <p className="text-xs font-mono text-center" style={{ color: "var(--red, #f87171)" }}>
+                {testError}
+              </p>
+            )}
+          </div>
 
           {/* Save button */}
           <button
