@@ -4,7 +4,9 @@
  * Regression: callback was redirecting to http://0.0.0.0:3000/ (internal Docker
  * origin) instead of the real public URL. This caused ERR_FAILED in the browser.
  *
- * Fix: use NEXT_PUBLIC_SUPABASE_URL env var as the base for all redirects.
+ * Fix: use NEXT_PUBLIC_APP_URL env var as the base for all redirects.
+ * Note: NEXT_PUBLIC_SUPABASE_URL is the API endpoint, not the app URL — they
+ * happen to be the same host for COIL but must remain distinct env vars.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
