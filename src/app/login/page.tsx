@@ -128,7 +128,7 @@ export default function LoginPage() {
               Continue without account (demo)
             </button>
             <p className="text-center text-[10px] font-mono text-[--text-faint] tracking-wide">
-              Data stored locally only — not synced
+              Demo mode: data stored locally only, not synced
             </p>
           </div>
         ) : (
