@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -275,6 +275,58 @@ function generateReport(data: WeekData): string {
   if (w.cupOverflowing) lines.push(`**Cup overflowing:** ${w.cupOverflowing}`);
   if (w.improve) lines.push(`**Areas to improve:** ${w.improve}`);
   return lines.join("\n");
+}
+
+// ── SQL Dump Export ────────────────────────────────────────────────────────
+
+async function downloadSqlDump(user: User, supabase: ReturnType<typeof createClient>) {
+  const { data: rows } = await supabase
+    .from("weeks")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("week_of");
+
+  if (!rows || rows.length === 0) {
+    alert("No data to export.");
+    return;
+  }
+
+  const esc = (s: string) => s.replace(/'/g, "''");
+  const now = new Date().toISOString().slice(0, 10);
+
+  const lines: string[] = [
+    `-- COIL data dump — ${now} — ${user.email}`,
+    ``,
+    `CREATE TABLE IF NOT EXISTS public.weeks (`,
+    `  id uuid PRIMARY KEY,`,
+    `  user_id uuid NOT NULL,`,
+    `  week_of date NOT NULL,`,
+    `  data jsonb NOT NULL DEFAULT '{}'::jsonb,`,
+    `  archived boolean NOT NULL DEFAULT false,`,
+    `  created_at timestamptz NOT NULL DEFAULT now(),`,
+    `  updated_at timestamptz NOT NULL DEFAULT now(),`,
+    `  UNIQUE (user_id, week_of)`,
+    `);`,
+    ``,
+  ];
+
+  const cols = "id, user_id, week_of, data, archived, created_at, updated_at";
+  const valueRows = rows.map((r) => {
+    const data = JSON.stringify(r.data).replace(/'/g, "''");
+    return `  ('${esc(r.id)}', '${esc(r.user_id)}', '${r.week_of}', '${data}'::jsonb, ${r.archived}, '${r.created_at}', '${r.updated_at}')`;
+  });
+
+  lines.push(`INSERT INTO public.weeks (${cols}) VALUES`);
+  lines.push(valueRows.join(",\n") + ";");
+
+  const sql = lines.join("\n");
+  const blob = new Blob([sql], { type: "application/sql" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `coil-dump-${now}.sql`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -587,10 +639,12 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
 
 function ExportTab({
   data,
+  user,
   onArchive,
   onReset,
 }: {
   data: WeekData;
+  user: User | null;
   onArchive: () => void;
   onReset: () => void;
 }) {
@@ -601,6 +655,12 @@ function ExportTab({
     await navigator.clipboard.writeText(report);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSqlDump = () => {
+    if (!user) return;
+    const supabase = createClient();
+    downloadSqlDump(user, supabase);
   };
 
   return (
@@ -617,6 +677,16 @@ function ExportTab({
           {copied ? <Check size={16} /> : <Copy size={16} />}
           {copied ? "Copied!" : "Copy Full COIL Report"}
         </button>
+        {user && (
+          <button
+            onClick={handleSqlDump}
+            className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
+            style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
+          >
+            <Download size={16} />
+            Download SQL Dump
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -955,7 +1025,7 @@ export default function CoilApp() {
             <WeeklyTab data={weekData} onChange={setWeekData} />
           )}
           {activeTab === "export" && (
-            <ExportTab data={weekData} onArchive={handleArchive} onReset={handleReset} />
+            <ExportTab data={weekData} user={user} onArchive={handleArchive} onReset={handleReset} />
           )}
           {activeTab === "past" && (
             <PastWeeksTab archive={archive} />
