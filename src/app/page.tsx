@@ -218,7 +218,7 @@ function TerritoryRow({
   return (
     <button
       onClick={onToggle}
-      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[#2a2a26]"
+      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
       style={{ borderColor: checked ? territory.color + "60" : undefined }}
     >
       <div className="flex items-center gap-3">
@@ -255,9 +255,9 @@ function WolfCheck({ value, onChange }: { value: WolfMode; onChange: (v: WolfMod
             onClick={() => onChange(value === key ? null : key)}
             className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
             style={{
-              borderColor: value === key ? "#c9a84c" : "#2e2e2a",
-              backgroundColor: value === key ? "#c9a84c15" : "transparent",
-              color: value === key ? "#c9a84c" : "#6b6557",
+              borderColor: value === key ? "var(--gold)" : "var(--border)",
+              backgroundColor: value === key ? "var(--gold-bg)" : "transparent",
+              color: value === key ? "var(--gold)" : "var(--text-muted)",
             }}
           >
             {label}
@@ -288,7 +288,7 @@ function DrinkCounter({
           >
             <Minus size={14} className="text-[--text-muted]" />
           </button>
-          <span className="font-mono text-2xl font-medium text-[#c9a84c] w-8 text-center">{value}</span>
+          <span className="font-mono text-2xl font-medium w-8 text-center" style={{color:"var(--gold)"}}>{value}</span>
           <button
             onClick={() => onChange(value + 1)}
             className="w-8 h-8 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
@@ -329,7 +329,7 @@ function JournalField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[#e8e0d0] placeholder-[#3a3530] focus:outline-none focus:border-[#c9a84c40] transition-colors"
+        className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
       />
     </div>
   );
@@ -372,19 +372,19 @@ function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) 
               onClick={() => setActiveDay(day)}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
-                backgroundColor: isActive ? "#c9a84c18" : "transparent",
-                border: isActive ? "1px solid #c9a84c40" : "1px solid #2e2e2a",
+                backgroundColor: isActive ? "var(--gold-bg)" : "transparent",
+                border: isActive ? "1px solid var(--gold-border)" : "1px solid var(--border)",
               }}
             >
               <span
                 className="text-[10px] font-mono tracking-wider mb-1"
-                style={{ color: isActive ? "#c9a84c" : isToday ? "#8a6f2e" : "#4a4540" }}
+                style={{ color: isActive ? "var(--gold)" : isToday ? "var(--gold-dim)" : "var(--text-dim)" }}
               >
                 {DAY_LABELS[day].slice(0, 3)}
               </span>
               <span
                 className="font-mono text-sm font-medium"
-                style={{ color: isActive ? "#c9a84c" : score > 0 ? "#e8e0d0" : "#3a3530" }}
+                style={{ color: isActive ? "var(--gold)" : score > 0 ? "var(--text)" : "var(--text-faint)" }}
               >
                 {score}
               </span>
@@ -398,7 +398,7 @@ function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) 
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">
           Territories — {DAY_LABELS[activeDay]}
         </p>
-        <span className="font-mono text-sm text-[#c9a84c]">{dayScore}/5</span>
+        <span className="font-mono text-sm" style={{color:"var(--gold)"}}>{dayScore}/5</span>
       </div>
 
       {/* Territories */}
@@ -482,7 +482,7 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
         })}
         <div className="pt-2 border-t border-[--border] flex items-center gap-2 text-sm">
           <span className="text-[--text-muted]">🥃 Drinks</span>
-          <span className="font-mono text-[#e8e0d0]">{weeklyDrinks} this week</span>
+          <span className="font-mono text-[--text]">{weeklyDrinks} this week</span>
         </div>
       </div>
 
@@ -527,7 +527,7 @@ function ExportTab({
         <button
           onClick={handleCopy}
           className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98]"
-          style={{ backgroundColor: "#c9a84c", color: "#1a1a18" }}
+          style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
           {copied ? "Copied!" : "Copy Full COIL Report"}
@@ -537,14 +537,20 @@ function ExportTab({
       <div className="flex gap-2">
         <button
           onClick={onArchive}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-[#4a9e6b40] text-[#4a9e6b] text-sm font-mono tracking-wide transition-all active:scale-[0.98] hover:bg-[#4a9e6b10]"
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
+          style={{borderColor:"var(--self-border)", color:"var(--self)", backgroundColor:"transparent"}}
+          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--self-bg)")}
+          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
         >
           <Archive size={14} />
           Archive & New Week
         </button>
         <button
           onClick={onReset}
-          className="px-5 py-3.5 rounded-2xl border border-[#c8555540] text-[#c85555] text-sm font-mono tracking-wide transition-all active:scale-[0.98] hover:bg-[#c8555510]"
+          className="px-5 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
+          style={{borderColor:"var(--health-border)", color:"var(--health)", backgroundColor:"transparent"}}
+          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--health-bg)")}
+          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
         >
           Reset
         </button>
@@ -590,8 +596,8 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
               <div className="flex items-center gap-3">
                 <div className="h-1 w-16 bg-[--bg] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#c9a84c] rounded-full"
-                    style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
+                    className="h-full rounded-full"
+                    style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%`, backgroundColor: "var(--gold)" }}
                   />
                 </div>
                 {isOpen ? <ChevronUp size={16} className="text-[--text-dim]" /> : <ChevronDown size={16} className="text-[--text-dim]" />}
@@ -735,12 +741,12 @@ export default function CoilApp() {
             <div className="flex items-center justify-between mb-1.5">
               <div className="h-1 flex-1 bg-[--bg-card] rounded-full overflow-hidden mr-4">
                 <div
-                  className="h-full bg-[#c9a84c] rounded-full transition-all duration-700"
-                  style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%`, backgroundColor: "var(--gold)" }}
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xl font-medium text-[#c9a84c]">{score}</span>
+                <span className="font-mono text-xl font-medium" style={{color:"var(--gold)"}}>{score}</span>
                 <span className="font-mono text-sm text-[--text-faint]">/{TOTAL_POSSIBLE}</span>
               </div>
             </div>
@@ -750,18 +756,18 @@ export default function CoilApp() {
         </div>
 
         {/* Tabs */}
-        <div className="px-5 border-b border-[#242420]">
+        <div className="px-5 border-b border-[--border]">
           <div className="flex gap-0 relative">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
-                style={{ color: activeTab === tab.key ? "#c9a84c" : "#4a4540" }}
+                style={{ color: activeTab === tab.key ? "var(--gold)" : "var(--text-dim)" }}
               >
                 {tab.label}
                 {activeTab === tab.key && (
-                  <div className="absolute bottom-0 left-0 right-0 h-px bg-[#c9a84c]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-px" style={{backgroundColor:"var(--gold)"}} />
                 )}
               </button>
             ))}
