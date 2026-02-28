@@ -747,7 +747,7 @@ export default function CoilApp() {
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -843,20 +843,33 @@ export default function CoilApp() {
   // Auto-save: demo → localStorage; auth → Supabase (debounced 500ms)
   useEffect(() => {
     if (!weekData) return;
-    setSaved(true);
-    const t = setTimeout(() => setSaved(false), 1200);
     if (isDemo) {
       demoSaveCurrent(weekData);
-    } else if (user) {
-      if (syncTimer.current) clearTimeout(syncTimer.current);
-      syncTimer.current = setTimeout(() => {
-        syncCurrentToSupabase(user.id, weekData).then((err) => {
-          if (err) setSaveError(`Save failed: ${err}`);
-          else setSaveError(null);
-        });
-      }, 500);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 1200);
+      return;
     }
-    return () => clearTimeout(t);
+    if (!user) return;
+    setSaveStatus("saving");
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      const timeoutId = setTimeout(() => {
+        setSaveStatus("timeout");
+        setSaveError("Timed out");
+        setTimeout(() => setSaveStatus("idle"), 3000);
+      }, 5000);
+      const err = await syncCurrentToSupabase(user.id, weekData);
+      clearTimeout(timeoutId);
+      if (err) {
+        setSaveError(err);
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus("idle"), 4000);
+      } else {
+        setSaveError(null);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 1500);
+      }
+    }, 500);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flush pending save immediately on page unload
@@ -1023,19 +1036,29 @@ export default function CoilApp() {
         </div>
       </div>
 
-      {/* Fixed SAVED / ERROR pill */}
-      <div
-        className="fixed bottom-6 left-1/2 px-3 py-1.5 rounded-full text-[11px] font-mono tracking-wider pointer-events-none transition-all duration-300"
-        style={{
-          backgroundColor: "var(--bg-card)",
-          border: `1px solid ${saveError ? "var(--red, #f87171)" : "var(--self)"}`,
-          color: saveError ? "var(--red, #f87171)" : "var(--self)",
-          opacity: (saved || saveError) ? 1 : 0,
-          transform: `translateX(-50%) translateY(${(saved || saveError) ? "0px" : "8px"})`,
-        }}
-      >
-        {saveError ? `⚠ ${saveError}` : "✓ saved"}
-      </div>
+      {/* Fixed save status pill */}
+      {saveStatus !== "idle" && (
+        <div
+          className="fixed bottom-6 left-1/2 px-3 py-1.5 rounded-full text-[11px] font-mono tracking-wider pointer-events-none transition-all duration-300"
+          style={{
+            backgroundColor: "var(--bg-card)",
+            border: `1px solid ${
+              saveStatus === "saved" ? "var(--self)" :
+              saveStatus === "saving" ? "var(--border)" :
+              "var(--red, #f87171)"
+            }`,
+            color: saveStatus === "saved" ? "var(--self)" :
+                   saveStatus === "saving" ? "var(--text-muted)" :
+                   "var(--red, #f87171)",
+            transform: "translateX(-50%)",
+          }}
+        >
+          {saveStatus === "saving" && "· saving…"}
+          {saveStatus === "saved" && "✓ saved"}
+          {saveStatus === "error" && `⚠ save failed: ${saveError}`}
+          {saveStatus === "timeout" && "⚠ save timed out — check connection"}
+        </div>
+      )}
     </div>
   );
 }
