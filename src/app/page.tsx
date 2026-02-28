@@ -1,65 +1,733 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useCallback } from "react";
+import { Copy, Check, Archive, RotateCcw, ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
+type WolfMode = "wise" | "open" | "loving" | "fierce" | null;
+type TabKey = "daily" | "weekly" | "export" | "past";
+
+interface DayData {
+  territories: Record<TerritoryKey, boolean>;
+  wolf: WolfMode;
+  drinks: number;
+  journal: string;
+  reflection: string;
+}
+
+interface WeekData {
+  weekOf: string; // ISO date string for Monday
+  days: Record<string, DayData>; // key: "mon" | "tue" etc.
+  weekly: {
+    wins: string;
+    gratitude: string;
+    lessons: string;
+    focusAchieved: string;
+    focusNext: string;
+    stretchNext: string;
+    onTrack: string;
+    cupOverflowing: string;
+    improve: string;
+  };
+}
+
+interface ArchivedWeek {
+  weekOf: string;
+  data: WeekData;
+  archivedAt: string;
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const TERRITORIES: { key: TerritoryKey; label: string; color: string; textColor: string }[] = [
+  { key: "self", label: "Self", color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
+  { key: "health", label: "Health", color: "#c85555", textColor: "text-[#c85555]" },
+  { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
+  { key: "wealth", label: "Wealth", color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
+  { key: "business", label: "Business", color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
+];
+
+const WOLF_MODES: { key: WolfMode; label: string }[] = [
+  { key: "wise", label: "Wise" },
+  { key: "open", label: "Open" },
+  { key: "loving", label: "Loving" },
+  { key: "fierce", label: "Fierce" },
+];
+
+const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const DAY_LABELS: Record<string, string> = {
+  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
+};
+
+const TOTAL_POSSIBLE = 35; // 5 territories × 7 days
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function getMondayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatWeekOf(date: Date): string {
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getTodayKey(): string {
+  const day = new Date().getDay();
+  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][day];
+}
+
+function emptyDayData(): DayData {
+  return {
+    territories: { self: false, health: false, relationships: false, wealth: false, business: false },
+    wolf: null,
+    drinks: 0,
+    journal: "",
+    reflection: "",
+  };
+}
+
+function emptyWeekData(monday: Date): WeekData {
+  return {
+    weekOf: monday.toISOString(),
+    days: Object.fromEntries(DAYS.map((d) => [d, emptyDayData()])),
+    weekly: {
+      wins: "", gratitude: "", lessons: "", focusAchieved: "",
+      focusNext: "", stretchNext: "", onTrack: "", cupOverflowing: "", improve: "",
+    },
+  };
+}
+
+function calcScore(data: WeekData): number {
+  let score = 0;
+  for (const day of DAYS) {
+    const d = data.days[day];
+    if (d) score += Object.values(d.territories).filter(Boolean).length;
+  }
+  return score;
+}
+
+function calcTerritoryScore(data: WeekData, key: TerritoryKey): number {
+  return DAYS.filter((d) => data.days[d]?.territories[key]).length;
+}
+
+function calcWeekDrinks(data: WeekData): number {
+  return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
+}
+
+// ── Storage ────────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "coil_current_week";
+const ARCHIVE_KEY = "coil_archived_weeks";
+
+function loadCurrent(): WeekData {
+  if (typeof window === "undefined") return emptyWeekData(getMondayOfWeek(new Date()));
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return emptyWeekData(getMondayOfWeek(new Date()));
+}
+
+function saveCurrent(data: WeekData) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function loadArchive(): ArchivedWeek[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(ARCHIVE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveArchive(weeks: ArchivedWeek[]) {
+  try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(weeks)); } catch {}
+}
+
+// ── Generate Report ────────────────────────────────────────────────────────
+
+function generateReport(data: WeekData): string {
+  const weekOf = new Date(data.weekOf);
+  const score = calcScore(data);
+  const lines: string[] = [
+    `# COIL Weekly Report — Week of ${formatWeekOf(weekOf)}`,
+    ``,
+    `## Weekly Score: ${score}/${TOTAL_POSSIBLE}`,
+    ``,
+    `## Daily Territory Scores`,
+    `| Territory | Mon | Tue | Wed | Thu | Fri | Sat | Sun | Total |`,
+    `|-----------|-----|-----|-----|-----|-----|-----|-----|-------|`,
+  ];
+  for (const t of TERRITORIES) {
+    const row = DAYS.map((d) => (data.days[d]?.territories[t.key] ? "✓" : "·")).join(" | ");
+    const total = calcTerritoryScore(data, t.key);
+    lines.push(`| ${t.label.padEnd(9)} | ${row} | ${total}/7 |`);
+  }
+  const totals = DAYS.map((d) => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
+  lines.push(`| **Total** | ${totals.join(" | ")} | **${score}/${TOTAL_POSSIBLE}** |`);
+  lines.push(``);
+  lines.push(`## Drinks`);
+  const drinkRow = DAYS.map((d) => data.days[d]?.drinks ?? 0).join(" | ");
+  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly |`);
+  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------|`);
+  lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
+  lines.push(``);
+  lines.push(`## Daily Journal`);
+  for (const day of DAYS) {
+    const d = data.days[day];
+    if (!d) continue;
+    const wolf = d.wolf ? ` · Wolf: ${d.wolf}` : "";
+    lines.push(`### ${DAY_LABELS[day]}${wolf}`);
+    if (d.journal) lines.push(d.journal);
+    if (d.reflection) lines.push(`*Better: ${d.reflection}*`);
+    lines.push(``);
+  }
+  lines.push(`## Weekly Reflection`);
+  const w = data.weekly;
+  if (w.wins) lines.push(`**Wins:** ${w.wins}`);
+  if (w.gratitude) lines.push(`**Gratitude:** ${w.gratitude}`);
+  if (w.lessons) lines.push(`**Lessons:** ${w.lessons}`);
+  if (w.focusAchieved) lines.push(`**Focus achieved:** ${w.focusAchieved}`);
+  if (w.focusNext) lines.push(`**Focus next week:** ${w.focusNext}`);
+  if (w.stretchNext) lines.push(`**Stretch next week:** ${w.stretchNext}`);
+  if (w.onTrack) lines.push(`**On track:** ${w.onTrack}`);
+  if (w.cupOverflowing) lines.push(`**Cup overflowing:** ${w.cupOverflowing}`);
+  if (w.improve) lines.push(`**Areas to improve:** ${w.improve}`);
+  return lines.join("\n");
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function TerritoryRow({
+  territory,
+  checked,
+  onToggle,
+}: {
+  territory: typeof TERRITORIES[0];
+  checked: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <button
+      onClick={onToggle}
+      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[#242420] border border-[#2e2e2a] active:bg-[#2a2a26]"
+      style={{ borderColor: checked ? territory.color + "60" : undefined }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: territory.color }} />
+        <span className="text-[15px] font-medium tracking-wide">{territory.label}</span>
+      </div>
+      <div
+        className="w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200"
+        style={{
+          borderColor: territory.color,
+          backgroundColor: checked ? territory.color : "transparent",
+        }}
+      >
+        {checked && (
+          <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+            <path d="M1 4L4.5 7.5L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function WolfCheck({ value, onChange }: { value: WolfMode; onChange: (v: WolfMode) => void }) {
+  return (
+    <div>
+      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-3">
+        🐺 Wolf Check — Where did I show up?
+      </p>
+      <div className="grid grid-cols-4 gap-2">
+        {WOLF_MODES.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => onChange(value === key ? null : key)}
+            className="py-2 rounded-lg text-sm font-medium border transition-all duration-200 active:scale-95"
+            style={{
+              borderColor: value === key ? "#c9a84c" : "#2e2e2a",
+              backgroundColor: value === key ? "#c9a84c15" : "transparent",
+              color: value === key ? "#c9a84c" : "#6b6557",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DrinkCounter({
+  value,
+  weeklyTotal,
+  onChange,
+}: {
+  value: number;
+  weeklyTotal: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-3">🥃 Drinks Today</p>
+      <div className="flex items-center justify-between bg-[#242420] rounded-xl px-4 py-3 border border-[#2e2e2a]">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => onChange(Math.max(0, value - 1))}
+            className="w-8 h-8 rounded-full bg-[#1a1a18] border border-[#2e2e2a] flex items-center justify-center active:scale-90 transition-transform"
+          >
+            <Minus size={14} className="text-[#6b6557]" />
+          </button>
+          <span className="font-mono text-2xl font-medium text-[#c9a84c] w-8 text-center">{value}</span>
+          <button
+            onClick={() => onChange(value + 1)}
+            className="w-8 h-8 rounded-full bg-[#1a1a18] border border-[#2e2e2a] flex items-center justify-center active:scale-90 transition-transform"
+          >
+            <Plus size={14} className="text-[#6b6557]" />
+          </button>
+        </div>
+        <span className="text-sm text-[#4a4540]">Weekly: {weeklyTotal}</span>
+      </div>
+    </div>
+  );
+}
+
+function JournalField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase mb-2">{label}</p>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-[#1e1e1c] border border-[#2e2e2a] rounded-xl px-4 py-3 text-[15px] text-[#e8e0d0] placeholder-[#3a3530] focus:outline-none focus:border-[#c9a84c40] transition-colors"
+      />
+    </div>
+  );
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+
+function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) => void }) {
+  const todayKey = getTodayKey();
+  const [activeDay, setActiveDay] = useState(todayKey);
+
+  const dayData = data.days[activeDay] ?? emptyDayData();
+  const weeklyDrinks = calcWeekDrinks(data);
+
+  const updateDay = useCallback(
+    (patch: Partial<DayData>) => {
+      const updated = { ...data, days: { ...data.days, [activeDay]: { ...dayData, ...patch } } };
+      onChange(updated);
+    },
+    [data, onChange, activeDay, dayData]
+  );
+
+  const toggleTerritory = (key: TerritoryKey) => {
+    updateDay({ territories: { ...dayData.territories, [key]: !dayData.territories[key] } });
+  };
+
+  const dayScore = Object.values(dayData.territories).filter(Boolean).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Day picker */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {DAYS.map((day) => {
+          const score = Object.values(data.days[day]?.territories ?? {}).filter(Boolean).length;
+          const isActive = activeDay === day;
+          const isToday = day === todayKey;
+          return (
+            <button
+              key={day}
+              onClick={() => setActiveDay(day)}
+              className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
+              style={{
+                backgroundColor: isActive ? "#c9a84c18" : "transparent",
+                border: isActive ? "1px solid #c9a84c40" : "1px solid #2e2e2a",
+              }}
+            >
+              <span
+                className="text-[10px] font-mono tracking-wider mb-1"
+                style={{ color: isActive ? "#c9a84c" : isToday ? "#8a6f2e" : "#4a4540" }}
+              >
+                {DAY_LABELS[day].slice(0, 3)}
+              </span>
+              <span
+                className="font-mono text-sm font-medium"
+                style={{ color: isActive ? "#c9a84c" : score > 0 ? "#e8e0d0" : "#3a3530" }}
+              >
+                {score}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Day score */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase">
+          Territories — {DAY_LABELS[activeDay]}
+        </p>
+        <span className="font-mono text-sm text-[#c9a84c]">{dayScore}/5</span>
+      </div>
+
+      {/* Territories */}
+      <div className="space-y-2">
+        {TERRITORIES.map((t) => (
+          <TerritoryRow
+            key={t.key}
+            territory={t}
+            checked={dayData.territories[t.key]}
+            onToggle={() => toggleTerritory(t.key)}
+          />
+        ))}
+      </div>
+
+      {/* Wolf check */}
+      <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
+
+      {/* Drinks */}
+      <DrinkCounter
+        value={dayData.drinks}
+        weeklyTotal={weeklyDrinks}
+        onChange={(drinks) => updateDay({ drinks })}
+      />
+
+      {/* Journal */}
+      <JournalField
+        label="Journal Notes"
+        placeholder="Wins, challenges, what happened today..."
+        value={dayData.journal}
+        onChange={(journal) => updateDay({ journal })}
+      />
+      <JournalField
+        label="What could I have done better?"
+        placeholder="Reflect honestly..."
+        value={dayData.reflection}
+        onChange={(reflection) => updateDay({ reflection })}
+      />
+    </div>
+  );
+}
+
+function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) => void }) {
+  const weeklyDrinks = calcWeekDrinks(data);
+
+  const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
+    onChange({ ...data, weekly: { ...data.weekly, ...patch } });
+  };
+
+  const reflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
+    { key: "wins", label: "Wins", placeholder: "One big win for this week..." },
+    { key: "gratitude", label: "Gratitude", placeholder: "Who or what am I grateful for?" },
+    { key: "lessons", label: "Lessons / Challenges", placeholder: "What did I learn? What did I try and fail at?" },
+    { key: "focusAchieved", label: "Did I achieve my focus & stretch from last week?", placeholder: "If not, why?" },
+    { key: "focusNext", label: "Focus for the coming week", placeholder: "One clear focus..." },
+    { key: "stretchNext", label: "Stretch for the coming week", placeholder: "Push beyond comfort..." },
+    { key: "onTrack", label: "Will I reach my goal if I continue this way?", placeholder: "" },
+    { key: "cupOverflowing", label: "Is my cup overflowing?", placeholder: "Am I giving from abundance or depletion?" },
+    { key: "improve", label: "What areas do I need to improve?", placeholder: "" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Territory breakdown */}
+      <div className="bg-[#242420] rounded-2xl p-4 border border-[#2e2e2a] space-y-3">
+        <p className="text-xs font-mono tracking-[0.15em] text-[#6b6557] uppercase">Territory Breakdown</p>
+        {TERRITORIES.map((t) => {
+          const score = calcTerritoryScore(data, t.key);
+          const pct = (score / 7) * 100;
+          return (
+            <div key={t.key} className="flex items-center gap-3">
+              <span className={`text-sm font-medium w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
+              <div className="flex-1 h-1.5 bg-[#1a1a18] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, backgroundColor: t.color }}
+                />
+              </div>
+              <span className="font-mono text-xs text-[#4a4540] w-8 text-right">{score}/7</span>
+            </div>
+          );
+        })}
+        <div className="pt-2 border-t border-[#2e2e2a] flex items-center gap-2 text-sm">
+          <span className="text-[#6b6557]">🥃 Drinks</span>
+          <span className="font-mono text-[#e8e0d0]">{weeklyDrinks} this week</span>
+        </div>
+      </div>
+
+      {/* Reflection questions */}
+      {reflectionFields.map(({ key, label, placeholder }) => (
+        <JournalField
+          key={key}
+          label={label}
+          placeholder={placeholder}
+          value={data.weekly[key]}
+          onChange={(v) => updateWeekly({ [key]: v })}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+      ))}
+    </div>
+  );
+}
+
+function ExportTab({
+  data,
+  onArchive,
+  onReset,
+}: {
+  data: WeekData;
+  onArchive: () => void;
+  onReset: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const report = generateReport(data);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(report);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-[#6b6557] leading-relaxed mb-4">
+          Copy your full COIL report as formatted text. Paste it into a chat for AI-guided reflection, or save it for your records.
+        </p>
+        <button
+          onClick={handleCopy}
+          className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98]"
+          style={{ backgroundColor: "#c9a84c", color: "#1a1a18" }}
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+          {copied ? "Copied!" : "Copy Full COIL Report"}
+        </button>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={onArchive}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-[#4a9e6b40] text-[#4a9e6b] text-sm font-mono tracking-wide transition-all active:scale-[0.98] hover:bg-[#4a9e6b10]"
+        >
+          <Archive size={14} />
+          Archive & New Week
+        </button>
+        <button
+          onClick={onReset}
+          className="px-5 py-3.5 rounded-2xl border border-[#c8555540] text-[#c85555] text-sm font-mono tracking-wide transition-all active:scale-[0.98] hover:bg-[#c8555510]"
+        >
+          Reset
+        </button>
+      </div>
+
+      {/* Preview */}
+      <div className="bg-[#1e1e1c] rounded-2xl p-4 border border-[#2e2e2a] overflow-auto max-h-64">
+        <pre className="text-xs text-[#4a4540] font-mono whitespace-pre-wrap leading-relaxed">{report}</pre>
+      </div>
+    </div>
+  );
+}
+
+function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  if (archive.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <p className="text-[#4a4540] text-sm">No archived weeks yet.</p>
+        <p className="text-[#3a3530] text-xs mt-2">
+          When you finish a week, go to Export → "Archive & New Week" to save it here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {[...archive].reverse().map((week) => {
+        const score = calcScore(week.data);
+        const isOpen = expanded === week.weekOf;
+        return (
+          <div key={week.weekOf} className="bg-[#242420] rounded-2xl border border-[#2e2e2a] overflow-hidden">
+            <button
+              onClick={() => setExpanded(isOpen ? null : week.weekOf)}
+              className="w-full flex items-center justify-between px-4 py-4"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              <div className="text-left">
+                <p className="text-sm font-medium">Week of {formatWeekOf(new Date(week.weekOf))}</p>
+                <p className="text-xs font-mono text-[#6b6557] mt-0.5">{score}/{TOTAL_POSSIBLE} points</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-1 w-16 bg-[#1a1a18] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#c9a84c] rounded-full"
+                    style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
+                  />
+                </div>
+                {isOpen ? <ChevronUp size={16} className="text-[#4a4540]" /> : <ChevronDown size={16} className="text-[#4a4540]" />}
+              </div>
+            </button>
+            {isOpen && (
+              <div className="px-4 pb-4 space-y-3 border-t border-[#2e2e2a] pt-3">
+                {TERRITORIES.map((t) => {
+                  const s = calcTerritoryScore(week.data, t.key);
+                  return (
+                    <div key={t.key} className="flex items-center gap-3">
+                      <span className={`text-xs w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
+                      <div className="flex-1 h-1 bg-[#1a1a18] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(s / 7) * 100}%`, backgroundColor: t.color }} />
+                      </div>
+                      <span className="font-mono text-xs text-[#4a4540]">{s}/7</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "daily", label: "Daily" },
+  { key: "weekly", label: "Weekly" },
+  { key: "export", label: "Export" },
+  { key: "past", label: "Past Weeks" },
+];
+
+export default function CoilApp() {
+  const [activeTab, setActiveTab] = useState<TabKey>("daily");
+  const [weekData, setWeekData] = useState<WeekData>(() => loadCurrent());
+  const [archive, setArchive] = useState<ArchivedWeek[]>(() => loadArchive());
+  const [saved, setSaved] = useState(false);
+
+  // Auto-save
+  useEffect(() => {
+    saveCurrent(weekData);
+    setSaved(true);
+    const t = setTimeout(() => setSaved(false), 1200);
+    return () => clearTimeout(t);
+  }, [weekData]);
+
+  const score = calcScore(weekData);
+  const weekOf = formatWeekOf(new Date(weekData.weekOf));
+
+  const handleArchive = () => {
+    const newArchive: ArchivedWeek[] = [
+      ...archive,
+      { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
+    ];
+    setArchive(newArchive);
+    saveArchive(newArchive);
+    const newWeek = emptyWeekData(getMondayOfWeek(new Date()));
+    setWeekData(newWeek);
+    saveCurrent(newWeek);
+    setActiveTab("daily");
+  };
+
+  const handleReset = () => {
+    if (!confirm("Reset all data for this week? This cannot be undone.")) return;
+    const fresh = emptyWeekData(getMondayOfWeek(new Date()));
+    setWeekData(fresh);
+    saveCurrent(fresh);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#1a1a18] flex flex-col">
+      <div className="max-w-md mx-auto w-full flex flex-col min-h-screen">
+        {/* Header */}
+        <div className="px-5 pt-8 pb-4">
+          <div className="flex items-start justify-between mb-1">
+            <h1 className="font-display text-3xl font-bold tracking-tight text-[#c9a84c]">COIL</h1>
+            <div className="text-right">
+              <p className="text-[10px] font-mono tracking-[0.15em] text-[#4a4540] uppercase">Week of</p>
+              <p className="text-sm font-mono text-[#6b6557]">{weekOf}</p>
+            </div>
+          </div>
+          <p className="text-[11px] font-mono tracking-[0.12em] text-[#3a3530] uppercase">
+            Daily Territory Tracker & Journal
           </p>
+
+          {/* Progress bar + score */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="h-1 flex-1 bg-[#242420] rounded-full overflow-hidden mr-4">
+                <div
+                  className="h-full bg-[#c9a84c] rounded-full transition-all duration-700"
+                  style={{ width: `${(score / TOTAL_POSSIBLE) * 100}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xl font-medium text-[#c9a84c]">{score}</span>
+                <span className="font-mono text-sm text-[#3a3530]">/{TOTAL_POSSIBLE}</span>
+              </div>
+            </div>
+            {saved && (
+              <p className="text-[10px] font-mono text-[#4a9e6b] tracking-wider">✓ SAVED</p>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Tabs */}
+        <div className="px-5 border-b border-[#242420]">
+          <div className="flex gap-0 relative">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
+                style={{ color: activeTab === tab.key ? "#c9a84c" : "#4a4540" }}
+              >
+                {tab.label}
+                {activeTab === tab.key && (
+                  <div className="absolute bottom-0 left-0 right-0 h-px bg-[#c9a84c]" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
-      </main>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          {activeTab === "daily" && (
+            <DailyTab data={weekData} onChange={setWeekData} />
+          )}
+          {activeTab === "weekly" && (
+            <WeeklyTab data={weekData} onChange={setWeekData} />
+          )}
+          {activeTab === "export" && (
+            <ExportTab data={weekData} onArchive={handleArchive} onReset={handleReset} />
+          )}
+          {activeTab === "past" && (
+            <PastWeeksTab archive={archive} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
