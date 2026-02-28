@@ -744,7 +744,7 @@ export default function CoilApp() {
                 <span className="font-mono text-sm text-[--text-faint]">/{TOTAL_POSSIBLE}</span>
               </div>
             </div>
-            <p className="text-[10px] font-mono tracking-wider transition-opacity duration-300" style={{color:"var(--self)", opacity: saved ? 1 : 0}}>✓ SAVED</p>
+            <p className="text-[10px] font-mono tracking-wider transition-opacity duration-300" style={{color:"var(--self)", opacity: 0, userSelect: "none"}}>✓ SAVED</p>
           </div>
 
         </div>
@@ -783,6 +783,20 @@ export default function CoilApp() {
             <PastWeeksTab archive={archive} />
           )}
         </div>
+      </div>
+
+      {/* Fixed SAVED pill — visible regardless of scroll */}
+      <div
+        className="fixed bottom-6 left-1/2 px-3 py-1.5 rounded-full text-[11px] font-mono tracking-wider pointer-events-none transition-all duration-300"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--self)",
+          color: "var(--self)",
+          opacity: saved ? 1 : 0,
+          transform: `translateX(-50%) translateY(${saved ? "0px" : "8px"})`,
+        }}
+      >
+        ✓ saved
       </div>
     </div>
   );
