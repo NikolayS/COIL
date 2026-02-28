@@ -1,17 +1,23 @@
 "use client";
 
+// NOTE: Run Supabase migration:
+// ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_email_day text DEFAULT 'sunday';
+
 import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
-const HOUR_OPTIONS = [
-  { value: 18, label: "6:00 PM" },
-  { value: 19, label: "7:00 PM" },
-  { value: 20, label: "8:00 PM" },
-  { value: 21, label: "9:00 PM" },
-  { value: 22, label: "10:00 PM" },
-];
+function formatHour(h: number): string {
+  if (h === 0) return "12 AM";
+  if (h === 12) return "12 PM";
+  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+}
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
+  value: i,
+  label: formatHour(i),
+}));
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -19,9 +25,14 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const [emailEnabled, setEmailEnabled] = useState(false);
-  const [emailHour, setEmailHour] = useState(20);
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
+  const [emailHour, setEmailHour] = useState(18);
   const [timezone, setTimezone] = useState("UTC");
+
+  const [sending, setSending] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -41,7 +52,8 @@ export default function SettingsPage() {
 
       if (data) {
         setEmailEnabled(data.weekly_email_enabled);
-        setEmailHour(data.weekly_email_hour);
+        setEmailHour(data.weekly_email_hour ?? 18);
+        if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
         if (data.timezone) setTimezone(data.timezone);
       }
       setLoading(false);
@@ -57,6 +69,7 @@ export default function SettingsPage() {
         user_id: user.id,
         weekly_email_enabled: emailEnabled,
         weekly_email_hour: emailHour,
+        weekly_email_day: emailDay,
         timezone,
         updated_at: new Date().toISOString(),
       },
@@ -65,6 +78,32 @@ export default function SettingsPage() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleTestEmail = async () => {
+    if (!user) return;
+    setSending(true);
+    setTestResult(null);
+    setTestError(null);
+    try {
+      const res = await fetch("/api/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setTestResult(`Test email sent to ${json.email} (week of ${json.week})`);
+        setTimeout(() => setTestResult(null), 5000);
+      } else {
+        setTestError(`Failed: ${json.error}`);
+        setTimeout(() => setTestError(null), 5000);
+      }
+    } catch (e) {
+      setTestError(`Failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+      setTimeout(() => setTestError(null), 5000);
+    }
+    setSending(false);
   };
 
   if (loading) {
@@ -100,7 +139,7 @@ export default function SettingsPage() {
               <button
                 onClick={() => setEmailEnabled(!emailEnabled)}
                 className="w-12 h-7 rounded-full transition-colors duration-200 relative"
-                style={{ backgroundColor: emailEnabled ? "var(--gold)" : "var(--bg)" , border: "1px solid var(--border)" }}
+                style={{ backgroundColor: emailEnabled ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
               >
                 <div
                   className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200"
@@ -109,27 +148,50 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {/* Hour selector — only shown when toggle is on */}
             {emailEnabled && (
-              <div>
-                <p className="text-xs text-[--text-dim] mb-2">Delivery time (Sunday)</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {HOUR_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setEmailHour(opt.value)}
-                      className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
-                      style={{
-                        borderColor: emailHour === opt.value ? "var(--gold)" : "var(--border)",
-                        backgroundColor: emailHour === opt.value ? "var(--gold-bg)" : "transparent",
-                        color: emailHour === opt.value ? "var(--gold)" : "var(--text-muted)",
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+              <>
+                {/* Day selector */}
+                <div>
+                  <p className="text-xs text-[--text-dim] mb-2">Delivery day</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(["saturday", "sunday"] as const).map((day) => (
+                      <button
+                        key={day}
+                        onClick={() => setEmailDay(day)}
+                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95 capitalize"
+                        style={{
+                          borderColor: emailDay === day ? "var(--gold)" : "var(--border)",
+                          backgroundColor: emailDay === day ? "var(--gold-bg)" : "transparent",
+                          color: emailDay === day ? "var(--gold)" : "var(--text-muted)",
+                        }}
+                      >
+                        {day.charAt(0).toUpperCase() + day.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+
+                {/* Hour selector — full 24h */}
+                <div>
+                  <p className="text-xs text-[--text-dim] mb-2">Delivery time</p>
+                  <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {HOUR_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setEmailHour(opt.value)}
+                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                        style={{
+                          borderColor: emailHour === opt.value ? "var(--gold)" : "var(--border)",
+                          backgroundColor: emailHour === opt.value ? "var(--gold-bg)" : "transparent",
+                          color: emailHour === opt.value ? "var(--gold)" : "var(--text-muted)",
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Timezone (read-only) */}
@@ -144,6 +206,26 @@ export default function SettingsPage() {
               <p className="text-sm font-mono text-[--text-muted]">{user?.email}</p>
             </div>
           </div>
+
+          {/* Test email button */}
+          <button
+            onClick={handleTestEmail}
+            disabled={sending}
+            className="w-full py-3 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+            style={{ backgroundColor: "var(--bg-card)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+          >
+            {sending ? "Sending..." : "Send Test Email"}
+          </button>
+          {testResult && (
+            <p className="text-xs font-mono text-center" style={{ color: "var(--green, #4ade80)" }}>
+              {testResult}
+            </p>
+          )}
+          {testError && (
+            <p className="text-xs font-mono text-center" style={{ color: "var(--red, #f87171)" }}>
+              {testError}
+            </p>
+          )}
 
           {/* Save button */}
           <button
