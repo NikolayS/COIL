@@ -860,7 +860,7 @@ export default function CoilApp() {
       setSaveStatus("timeout");
       setSaveError("Timed out");
       setTimeout(() => setSaveStatus("idle"), 3000);
-    }, 5000);
+    }, 10000);
     syncCurrentToSupabase(user.id, weekData, controller.signal).then((err) => {
       clearTimeout(timeoutId);
       if (controller.signal.aborted) return; // timeout already handled
