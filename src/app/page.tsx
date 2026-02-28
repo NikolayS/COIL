@@ -179,13 +179,15 @@ function demoClearAll() {
 
 // ── Supabase sync ──────────────────────────────────────────────────────────
 
-async function syncCurrentToSupabase(userId: string, data: WeekData): Promise<string | null> {
+async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: AbortSignal): Promise<string | null> {
+  if (signal?.aborted) return "Timed out";
   const supabase = createClient();
   const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
   const { error } = await supabase.from("weeks").upsert(
     { user_id: userId, week_of: weekOf, data, archived: false, updated_at: new Date().toISOString() },
     { onConflict: "user_id,week_of" }
   );
+  if (signal?.aborted) return "Timed out";
   return error ? error.message : null;
 }
 
@@ -851,15 +853,17 @@ export default function CoilApp() {
     }
     if (!user) return;
     setSaveStatus("saving");
-    // Cancel any pending save and run immediately
     if (syncTimer.current) clearTimeout(syncTimer.current);
+    const controller = new AbortController();
     const timeoutId = setTimeout(() => {
+      controller.abort();
       setSaveStatus("timeout");
       setSaveError("Timed out");
       setTimeout(() => setSaveStatus("idle"), 3000);
     }, 5000);
-    syncCurrentToSupabase(user.id, weekData).then((err) => {
+    syncCurrentToSupabase(user.id, weekData, controller.signal).then((err) => {
       clearTimeout(timeoutId);
+      if (controller.signal.aborted) return; // timeout already handled
       if (err) {
         setSaveError(err);
         setSaveStatus("error");
