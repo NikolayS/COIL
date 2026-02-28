@@ -744,6 +744,7 @@ export default function CoilApp() {
   }, []);
 
   const handleSignOut = async () => {
+    document.cookie = "coil_demo=; path=/; max-age=0";
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
@@ -833,17 +834,23 @@ export default function CoilApp() {
               </button>
               <button
                 onClick={handleSignOut}
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
-                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                title={user ? `Signed in as ${user.email}` : "Demo mode"}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors relative"
+                style={{backgroundColor:"var(--bg-card)", border:`1px solid ${user ? "var(--self-border)" : "var(--border)"}`, color: user ? "var(--self)" : "var(--text-muted)"}}
                 aria-label="Sign out"
               >
                 <LogOut size={14} />
               </button>
             </div>
           </div>
-          <p className="text-[11px] font-mono tracking-[0.12em] text-[--text-faint] uppercase">
-            Daily Territory Tracker & Journal
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-mono tracking-[0.12em] text-[--text-faint] uppercase">
+              Daily Territory Tracker & Journal
+            </p>
+            <p className="text-[10px] font-mono text-[--text-faint] truncate max-w-[140px]">
+              {user ? user.email : "demo mode"}
+            </p>
+          </div>
 
           {/* Progress bar + score */}
           <div className="mt-4">

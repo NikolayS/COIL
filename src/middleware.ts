@@ -27,11 +27,11 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Demo mode: skip auth entirely
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return supabaseResponse;
+  // Allow demo users (set cookie when they click "Continue without account")
+  const isDemo = request.cookies.get("coil_demo")?.value === "1";
 
   // Redirect unauthenticated users to /login
-  if (!user && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth/callback")) {
+  if (!user && !isDemo && !request.nextUrl.pathname.startsWith("/login") && !request.nextUrl.pathname.startsWith("/auth/callback")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
