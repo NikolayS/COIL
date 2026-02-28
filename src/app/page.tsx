@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, LogOut } from "lucide-react";
+import { createClient } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -122,6 +124,7 @@ function calcWeekDrinks(data: WeekData): number {
 }
 
 // ── Storage ────────────────────────────────────────────────────────────────
+// localStorage is used as a write-through cache; Supabase is source of truth.
 
 const STORAGE_KEY = "coil_current_week";
 const ARCHIVE_KEY = "coil_archived_weeks";
@@ -150,6 +153,55 @@ function loadArchive(): ArchivedWeek[] {
 
 function saveArchive(weeks: ArchivedWeek[]) {
   try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(weeks)); } catch {}
+}
+
+// ── Supabase sync ──────────────────────────────────────────────────────────
+
+async function syncCurrentToSupabase(userId: string, data: WeekData) {
+  const supabase = createClient();
+  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  await supabase.from("weeks").upsert(
+    { user_id: userId, week_of: weekOf, data, archived: false, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,week_of" }
+  );
+}
+
+async function fetchCurrentFromSupabase(userId: string): Promise<WeekData | null> {
+  const supabase = createClient();
+  const monday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from("weeks")
+    .select("data")
+    .eq("user_id", userId)
+    .eq("week_of", monday)
+    .eq("archived", false)
+    .maybeSingle();
+  return data?.data ?? null;
+}
+
+async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("weeks")
+    .select("week_of, data, updated_at")
+    .eq("user_id", userId)
+    .eq("archived", true)
+    .order("week_of", { ascending: false });
+  if (!data) return [];
+  return data.map((row) => ({
+    weekOf: new Date(row.week_of).toISOString(),
+    data: row.data as WeekData,
+    archivedAt: row.updated_at,
+  }));
+}
+
+async function archiveInSupabase(userId: string, data: WeekData) {
+  const supabase = createClient();
+  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  await supabase.from("weeks").upsert(
+    { user_id: userId, week_of: weekOf, data, archived: true, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,week_of" }
+  );
 }
 
 // ── Generate Report ────────────────────────────────────────────────────────
@@ -638,6 +690,8 @@ const TABS: { key: TabKey; label: string }[] = [
 export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [user, setUser] = useState<User | null>(null);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light") || "dark";
@@ -651,11 +705,40 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("coil_theme", next);
   };
+
   const [weekData, setWeekData] = useState<WeekData>(() => loadCurrent());
   const [archive, setArchive] = useState<ArchivedWeek[]>(() => loadArchive());
   const [saved, setSaved] = useState(false);
 
-  // Auto-archive on week boundary: if stored week != current week, archive and start fresh
+  // Get current user and hydrate from Supabase
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      setUser(user);
+      if (!user) return;
+      // Hydrate from Supabase (overrides localStorage)
+      const [remoteWeek, remoteArchive] = await Promise.all([
+        fetchCurrentFromSupabase(user.id),
+        fetchArchiveFromSupabase(user.id),
+      ]);
+      if (remoteWeek) {
+        setWeekData(remoteWeek);
+        saveCurrent(remoteWeek);
+      }
+      if (remoteArchive.length > 0) {
+        setArchive(remoteArchive);
+        saveArchive(remoteArchive);
+      }
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
+
+  // Auto-archive on week boundary
   useEffect(() => {
     const currentMonday = getMondayOfWeek(new Date()).toISOString();
     if (weekData.weekOf !== currentMonday) {
@@ -671,6 +754,7 @@ export default function CoilApp() {
         ];
         setArchive(newArchive);
         saveArchive(newArchive);
+        if (user) archiveInSupabase(user.id, weekData);
       }
       const fresh = emptyWeekData(getMondayOfWeek(new Date()));
       setWeekData(fresh);
@@ -679,13 +763,17 @@ export default function CoilApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-save
+  // Auto-save (localStorage immediate, Supabase debounced 2s)
   useEffect(() => {
     saveCurrent(weekData);
     setSaved(true);
     const t = setTimeout(() => setSaved(false), 1200);
+    if (user) {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      syncTimer.current = setTimeout(() => syncCurrentToSupabase(user.id, weekData), 2000);
+    }
     return () => clearTimeout(t);
-  }, [weekData]);
+  }, [weekData, user]);
 
   const score = calcScore(weekData);
   const weekOf = formatWeekOf(new Date(weekData.weekOf));
@@ -697,9 +785,11 @@ export default function CoilApp() {
     ];
     setArchive(newArchive);
     saveArchive(newArchive);
+    if (user) archiveInSupabase(user.id, weekData);
     const newWeek = emptyWeekData(getMondayOfWeek(new Date()));
     setWeekData(newWeek);
     saveCurrent(newWeek);
+    if (user) syncCurrentToSupabase(user.id, newWeek);
     setActiveTab("daily");
   };
 
@@ -729,6 +819,14 @@ export default function CoilApp() {
                 aria-label="Toggle theme"
               >
                 {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                aria-label="Sign out"
+              >
+                <LogOut size={14} />
               </button>
             </div>
           </div>
