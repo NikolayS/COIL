@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, LogOut } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -720,7 +720,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
   const [user, setUser] = useState<User | null>(null);
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
@@ -729,16 +729,35 @@ export default function CoilApp() {
   const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const applyTheme = (t: "dark" | "light" | "system") => {
+    const resolved = t === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : t;
+    document.documentElement.setAttribute("data-theme", resolved);
+  };
+
   useEffect(() => {
-    const saved = (localStorage.getItem("coil_theme") as "dark" | "light") || "dark";
+    const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
-    document.documentElement.setAttribute("data-theme", saved);
+    applyTheme(saved);
+
+    // Keep system theme in sync with OS changes
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onMqChange = () => {
+      setTheme(prev => {
+        if (prev === "system") applyTheme("system");
+        return prev;
+      });
+    };
+    mq.addEventListener("change", onMqChange);
+    return () => mq.removeEventListener("change", onMqChange);
   }, []);
 
   const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
+    // Cycle: system → light → dark → system
+    const next = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
     setTheme(next);
-    document.documentElement.setAttribute("data-theme", next);
+    applyTheme(next);
     localStorage.setItem("coil_theme", next);
   };
 
@@ -862,9 +881,10 @@ export default function CoilApp() {
                 onClick={toggleTheme}
                 className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                aria-label="Toggle theme"
+                aria-label={`Theme: ${theme} (click to cycle)`}
+                title={`Theme: ${theme}`}
               >
-                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+                {theme === "dark" ? <Moon size={14} /> : theme === "light" ? <Sun size={14} /> : <Monitor size={14} />}
               </button>
               <button
                 onClick={handleSignOut}
