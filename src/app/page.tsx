@@ -179,13 +179,14 @@ function demoClearAll() {
 
 // ── Supabase sync ──────────────────────────────────────────────────────────
 
-async function syncCurrentToSupabase(userId: string, data: WeekData) {
+async function syncCurrentToSupabase(userId: string, data: WeekData): Promise<string | null> {
   const supabase = createClient();
   const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
-  await supabase.from("weeks").upsert(
+  const { error } = await supabase.from("weeks").upsert(
     { user_id: userId, week_of: weekOf, data, archived: false, updated_at: new Date().toISOString() },
     { onConflict: "user_id,week_of" }
   );
+  return error ? error.message : null;
 }
 
 async function fetchCurrentFromSupabase(userId: string): Promise<WeekData | null> {
@@ -747,6 +748,7 @@ export default function CoilApp() {
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -847,7 +849,12 @@ export default function CoilApp() {
       demoSaveCurrent(weekData);
     } else if (user) {
       if (syncTimer.current) clearTimeout(syncTimer.current);
-      syncTimer.current = setTimeout(() => syncCurrentToSupabase(user.id, weekData), 500);
+      syncTimer.current = setTimeout(() => {
+        syncCurrentToSupabase(user.id, weekData).then((err) => {
+          if (err) setSaveError(`Save failed: ${err}`);
+          else setSaveError(null);
+        });
+      }, 500);
     }
     return () => clearTimeout(t);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1016,18 +1023,18 @@ export default function CoilApp() {
         </div>
       </div>
 
-      {/* Fixed SAVED pill — visible regardless of scroll */}
+      {/* Fixed SAVED / ERROR pill */}
       <div
         className="fixed bottom-6 left-1/2 px-3 py-1.5 rounded-full text-[11px] font-mono tracking-wider pointer-events-none transition-all duration-300"
         style={{
           backgroundColor: "var(--bg-card)",
-          border: "1px solid var(--self)",
-          color: "var(--self)",
-          opacity: saved ? 1 : 0,
-          transform: `translateX(-50%) translateY(${saved ? "0px" : "8px"})`,
+          border: `1px solid ${saveError ? "var(--red, #f87171)" : "var(--self)"}`,
+          color: saveError ? "var(--red, #f87171)" : "var(--self)",
+          opacity: (saved || saveError) ? 1 : 0,
+          transform: `translateX(-50%) translateY(${(saved || saveError) ? "0px" : "8px"})`,
         }}
       >
-        ✓ saved
+        {saveError ? `⚠ ${saveError}` : "✓ saved"}
       </div>
     </div>
   );
