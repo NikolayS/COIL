@@ -13,7 +13,7 @@ function getMondayOfWeek(date: Date): Date {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId, overrideEmail } = body as { userId: string; overrideEmail?: string | null };
+  const { userId, overrideEmail, weekChoice } = body as { userId: string; overrideEmail?: string | null; weekChoice?: "current" | "previous" };
 
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
@@ -42,51 +42,43 @@ export async function POST(request: NextRequest) {
   // Priority: inline override > saved report_email > auth email
   const email = overrideEmail?.trim() || settings?.report_email || authEmail;
 
-  // Try current week, then previous week
   const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
   const prevMonday = getMondayOfWeek(
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   ).toISOString().slice(0, 10);
 
+  // Use weekChoice if provided, otherwise try current then previous
+  const mondaysToTry = weekChoice === "previous"
+    ? [prevMonday]
+    : weekChoice === "current"
+    ? [currentMonday]
+    : [currentMonday, prevMonday];
+
   let weekRow: { data: unknown } | null = null;
-  let usedMonday = currentMonday;
+  let usedMonday = mondaysToTry[0];
 
-  const { data: curr } = await supabase
-    .from("weeks")
-    .select("data")
-    .eq("user_id", userId)
-    .eq("week_of", currentMonday)
-    .maybeSingle();
-
-  if (curr?.data) {
-    weekRow = curr;
-  } else {
-    const { data: prev } = await supabase
+  for (const monday of mondaysToTry) {
+    const { data } = await supabase
       .from("weeks")
       .select("data")
       .eq("user_id", userId)
-      .eq("week_of", prevMonday)
+      .eq("week_of", monday)
       .maybeSingle();
-    if (prev?.data) {
-      weekRow = prev;
-      usedMonday = prevMonday;
+    if (data?.data) {
+      weekRow = data;
+      usedMonday = monday;
+      break;
     }
   }
 
-  let emailSubject: string;
-  let emailBody: string;
-
   if (!weekRow?.data) {
-    // No week data yet — send a connectivity test email anyway
-    emailSubject = `[TEST - no data yet] COIL Email Test`;
-    emailBody = `This is a connectivity test for COIL weekly reports.\n\nNo week data exists yet — add some data to get a real report.\n\nIf you received this email, your email delivery is working correctly.`;
-    usedMonday = "none";
-  } else {
-    const weekData = weekRow.data as WeekData;
-    const report = generateReport(weekData);
-    emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
-    emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
+    return NextResponse.json({ error: "No week data found" }, { status: 404 });
   }
+
+  const weekData = weekRow.data as WeekData;
+  const report = generateReport(weekData);
+  const emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
+  const emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
