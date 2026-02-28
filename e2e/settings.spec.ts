@@ -79,7 +79,6 @@ test.describe("settings page — authenticated", () => {
     await expect(page.locator("text=Sunday")).toBeVisible();
     await expect(page.locator("text=Delivery time")).toBeVisible();
     // All 24 hour buttons rendered
-    const hourButtons = page.locator("text=12 AM, text=6 PM, text=11 PM");
     await expect(page.locator("text=12 AM")).toBeVisible();
     await expect(page.locator("text=6 PM")).toBeVisible();
     await expect(page.locator("text=11 PM")).toBeVisible();
