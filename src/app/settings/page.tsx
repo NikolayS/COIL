@@ -1,8 +1,8 @@
 "use client";
 
 // NOTE: Run Supabase migration:
-// ALTER TABLE settings ADD COLUMN IF NOT EXISTS weekly_email_day text DEFAULT 'sunday';
-// ALTER TABLE settings ADD COLUMN IF NOT EXISTS report_email text;
+// alter table settings add column if not exists weekly_email_day text default 'sunday';
+// alter table settings add column if not exists report_email text;
 
 import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
