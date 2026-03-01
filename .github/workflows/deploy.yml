@@ -35,7 +35,13 @@ jobs:
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
                 CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
-              -- email_pdf column (added 2026-03-01)
+              -- settings columns (idempotent)
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='weekly_email_day') THEN
+                ALTER TABLE public.settings ADD COLUMN weekly_email_day text DEFAULT 'sunday';
+              END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='report_email') THEN
+                ALTER TABLE public.settings ADD COLUMN report_email text;
+              END IF;
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='email_pdf') THEN
                 ALTER TABLE public.settings ADD COLUMN email_pdf boolean DEFAULT false;
               END IF;
