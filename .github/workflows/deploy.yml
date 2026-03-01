@@ -26,16 +26,14 @@ jobs:
             docker compose --env-file .env up -d --force-recreate
 
             # Apply DB migrations (idempotent — safe to run on every deploy)
-            docker exec supabase-db-1 psql -U postgres -d postgres << 'SQLEOF'
-            DO $$ BEGIN
-              -- RLS policies
+            cat > /tmp/migrate.sql << 'EOF'
+            DO $body$ BEGIN
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='weeks' AND policyname='users see own weeks') THEN
                 CREATE POLICY "users see own weeks" ON public.weeks FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
                 CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
-              -- settings columns
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='weekly_email_day') THEN
                 ALTER TABLE public.settings ADD COLUMN weekly_email_day text DEFAULT 'sunday';
               END IF;
@@ -57,13 +55,13 @@ jobs:
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder2_hour') THEN
                 ALTER TABLE public.settings ADD COLUMN reminder2_hour integer DEFAULT 20;
               END IF;
-            END $$;
+            END $body$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
-            -- Reload PostgREST schema cache
-            NOTIFY pgrst, 'reload schema';
-            SQLEOF
-
+            SELECT pg_notify('pgrst', 'reload schema');
+            EOF
+            docker cp /tmp/migrate.sql supabase-db-1:/tmp/migrate.sql
+            docker exec supabase-db-1 psql -U postgres -d postgres -f /tmp/migrate.sql -v ON_ERROR_STOP=1
             echo "Migrations complete: $(date -u)"
 
   deploy-app:
