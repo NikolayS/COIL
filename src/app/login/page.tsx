@@ -62,10 +62,10 @@ function LoginInner() {
   };
 
   return (
-    <div className="min-h-screen flex items-start justify-center px-5 pt-12" style={{ background: "var(--bg)" }}>
+    <div className="min-h-screen flex items-center justify-center px-5" style={{ background: "var(--bg)" }}>
       <div className="w-full max-w-sm">
         <h1 className="text-3xl font-bold tracking-tight mb-1" style={{ color: "var(--gold)" }}>COIL</h1>
-        <p className="text-xs font-mono tracking-[0.12em] text-[--text-faint] uppercase mb-7">
+        <p className="text-xs font-mono tracking-[0.12em] text-[--text-faint] uppercase mb-6">
           Daily Territory Tracker & Journal
         </p>
 
@@ -75,7 +75,7 @@ function LoginInner() {
             <button
               onClick={handleGoogle}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl font-mono text-sm tracking-[0.08em] font-medium border transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+              className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl font-mono text-sm tracking-[0.08em] font-medium border transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
               style={{ borderColor: "var(--border)", color: "var(--text)", backgroundColor: "var(--bg-card)" }}
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -104,14 +104,14 @@ function LoginInner() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
+                  className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-2.5 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
                 />
               </div>
               {error && <p className="text-sm" style={{ color: "var(--health)" }}>{error}</p>}
               <button
                 type="submit"
                 disabled={loading || !email.includes("@")}
-                className="w-full py-3.5 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+                className="w-full py-3 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
                 style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
               >
                 {loading ? "Sending…" : "Send magic link"}
@@ -129,7 +129,7 @@ function LoginInner() {
                 document.cookie = "coil_demo=1; path=/; max-age=" + 60 * 60 * 24 * 30;
                 window.location.href = "/";
               }}
-              className="w-full py-3 rounded-2xl font-mono text-xs tracking-[0.1em] uppercase border transition-all duration-200 active:scale-[0.98]"
+              className="w-full py-2.5 rounded-2xl font-mono text-xs tracking-[0.1em] uppercase border transition-all duration-200 active:scale-[0.98]"
               style={{ borderColor: "var(--border)", color: "var(--text-dim)", backgroundColor: "transparent" }}
             >
               Continue without account (demo)
