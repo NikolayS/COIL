@@ -842,7 +842,7 @@ export default function CoilApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekData === null]);
 
-  // Auto-save: demo → localStorage; auth → Supabase (immediate, no debounce)
+  // Auto-save: demo → localStorage; auth → Supabase (1.5s debounce)
   useEffect(() => {
     if (!weekData) return;
     if (isDemo) {
@@ -854,26 +854,28 @@ export default function CoilApp() {
     if (!user) return;
     setSaveStatus("saving");
     if (syncTimer.current) clearTimeout(syncTimer.current);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-      setSaveStatus("timeout");
-      setSaveError("Timed out");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-    }, 10000);
-    syncCurrentToSupabase(user.id, weekData, controller.signal).then((err) => {
-      clearTimeout(timeoutId);
-      if (controller.signal.aborted) return; // timeout already handled
-      if (err) {
-        setSaveError(err);
-        setSaveStatus("error");
-        setTimeout(() => setSaveStatus("idle"), 4000);
-      } else {
-        setSaveError(null);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 1500);
-      }
-    });
+    syncTimer.current = setTimeout(() => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        setSaveStatus("timeout");
+        setSaveError("Timed out");
+        setTimeout(() => setSaveStatus("idle"), 3000);
+      }, 10000);
+      syncCurrentToSupabase(user.id, weekData, controller.signal).then((err) => {
+        clearTimeout(timeoutId);
+        if (controller.signal.aborted) return;
+        if (err) {
+          setSaveError(err);
+          setSaveStatus("error");
+          setTimeout(() => setSaveStatus("idle"), 4000);
+        } else {
+          setSaveError(null);
+          setSaveStatus("saved");
+          setTimeout(() => setSaveStatus("idle"), 1500);
+        }
+      });
+    }, 1500);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — auth check pending
