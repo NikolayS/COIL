@@ -44,7 +44,13 @@ jobs:
             cd /opt/coil
             git fetch origin
             git reset --hard origin/main
-            docker build -t coil-app .
+            eval $(grep -E '^NEXT_PUBLIC_' .env.local | sed 's/^/export /')
+            docker build -t coil-app \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+              --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+              .
             docker stop coil || true
             docker rm coil || true
             docker run -d \
