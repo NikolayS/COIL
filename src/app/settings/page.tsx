@@ -221,8 +221,8 @@ function SettingsInner() {
                   <p className="text-xs text-[--text-dim] mb-2">First day of week</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {([
-                      { value: "monday", label: "Monday", delivers: "Mon" },
                       { value: "sunday", label: "Sunday", delivers: "Sun" },
+                      { value: "monday", label: "Monday", delivers: "Mon" },
                     ] as const).map(({ value, label, delivers }) => (
                       <button
                         key={value}
