@@ -8,7 +8,7 @@
  *  - emptyWeekData(date)
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // ── Type definitions (mirrors src/app/page.tsx) ───────────────────────────────
 
@@ -115,7 +115,7 @@ function dayWith(territories: Partial<Record<TerritoryKey, boolean>>): DayData {
 function weekWithDays(dayOverrides: Partial<Record<string, Partial<Record<TerritoryKey, boolean>>>>): WeekData {
   const base = emptyWeekData(getMondayOfWeek(new Date("2025-01-06"))); // a known Monday
   for (const [day, overrides] of Object.entries(dayOverrides)) {
-    base.days[day] = dayWith(overrides);
+    base.days[day] = dayWith(overrides ?? {});
   }
   return base;
 }
