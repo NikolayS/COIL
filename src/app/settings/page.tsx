@@ -68,7 +68,7 @@ function SettingsInner() {
 
   const [sending, setSending] = useState(false);
   const [testOverrideEmail, setTestOverrideEmail] = useState("");
-  const [testWeekChoice, setTestWeekChoice] = useState<"current" | "previous">("current");
+  const [testWeekChoice, setTestWeekChoice] = useState<"current" | "previous">("previous");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
@@ -345,7 +345,7 @@ function SettingsInner() {
             <div>
               <p className="text-xs text-[--text-dim] mb-2">Week</p>
               <div className="grid grid-cols-2 gap-1.5">
-                {(["current", "previous"] as const).map((choice) => (
+                {(["previous", "current"] as const).map((choice) => (
                   <button
                     key={choice}
                     onClick={() => setTestWeekChoice(choice)}
