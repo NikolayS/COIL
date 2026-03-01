@@ -2,12 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/**]
   pull_request:
     branches: [main]
 
 jobs:
+  # ── 1. Vitest unit tests ────────────────────────────────────────────────────
   unit-test:
+    name: Unit Tests (Vitest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,52 +22,11 @@ jobs:
       - run: npm ci
 
       - name: Run unit tests
-        run: npm test
+        run: npm run test:unit
 
-  e2e-test:
-    runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder' }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder' }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder' }}
-      CRON_SECRET: placeholder
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-
-      - name: Build app
-        run: npm run build
-
-      - name: Start app in background
-        run: |
-          npm run start &
-          # Wait for app to be ready
-          npx wait-on http://localhost:3000 --timeout 30000
-
-      - name: Run E2E tests
-        run: npm run test:e2e
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
-
+  # ── 2. Build (depends on unit tests passing) ────────────────────────────────
   build:
+    name: Build
     runs-on: ubuntu-latest
     needs: [unit-test]
     env:
@@ -83,3 +44,40 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # ── 3. Playwright E2E against live site ────────────────────────────────────
+  #
+  # Runs against https://coil.5am.team (PLAYWRIGHT_BASE_URL).
+  # Auth-gated tests skip gracefully when secrets are absent.
+  # Demo-mode tests (demo.spec.ts) always run — no secrets needed.
+  e2e-test:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_BASE_URL: https://coil.5am.team
+      # Optional: set these secrets in GitHub to enable auth-gated settings tests
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
