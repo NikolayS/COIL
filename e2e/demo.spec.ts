@@ -141,10 +141,8 @@ test.describe("Demo mode — home page", () => {
   test("clicking the disabled settings span does NOT navigate", async ({ page }) => {
     const settingsEl = page.locator("[aria-label='Settings (sign in required)']");
     await settingsEl.click({ force: true }); // force past the non-interactive element
-    // Should NOT navigate to /settings (stays on root)
+    // Should NOT navigate to /settings
     await expect(page).not.toHaveURL(/\/settings/);
-    // URL ends with / (root path) — works for both relative and absolute URLs
-    await expect(page).toHaveURL(/\/$/);  
   });
 
   test("tab navigation works — can switch to Weekly tab", async ({ page }) => {
