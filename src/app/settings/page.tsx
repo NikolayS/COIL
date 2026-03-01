@@ -53,7 +53,7 @@ function SettingsInner() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [emailEnabled, setEmailEnabled] = useState(true);
-  const [emailPdf, setEmailPdf] = useState(false);
+  const [emailPdf, setEmailPdf] = useState(true);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
   const [emailHour, setEmailHour] = useState(18);
@@ -92,7 +92,7 @@ function SettingsInner() {
       if (data) {
         // weekly_email_enabled: treat null as true (default on)
         setEmailEnabled(data.weekly_email_enabled ?? true);
-        setEmailPdf(data.email_pdf ?? false);
+        setEmailPdf(data.email_pdf ?? true);
         setWeekStart(data.week_start ?? "monday");
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);

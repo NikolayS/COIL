@@ -41,7 +41,7 @@ jobs:
                 ALTER TABLE public.settings ADD COLUMN report_email text;
               END IF;
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='email_pdf') THEN
-                ALTER TABLE public.settings ADD COLUMN email_pdf boolean DEFAULT false;
+                ALTER TABLE public.settings ADD COLUMN email_pdf boolean DEFAULT true;
               END IF;
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder1_enabled') THEN
                 ALTER TABLE public.settings ADD COLUMN reminder1_enabled boolean DEFAULT true;
