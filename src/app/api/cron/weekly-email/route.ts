@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   // Fetch all users with weekly email enabled
   const { data: settings, error: settingsError } = await supabase
     .from("settings")
-    .select("user_id, weekly_email_hour, weekly_email_day, report_email, timezone")
+    .select("user_id, weekly_email_hour, weekly_email_day, report_email, timezone, email_pdf")
     .eq("weekly_email_enabled", true);
 
   if (settingsError) {
@@ -83,17 +83,19 @@ export async function POST(request: NextRequest) {
     const weekData = weekRow.data as WeekData;
     const report = generateReport(weekData);
 
-    // Generate PDF attachment (non-fatal if it fails)
+    // Generate PDF attachment (only if user opted in)
     let pdfAttachment: { filename: string; content: string; type: string } | undefined;
-    try {
-      const pdfBytes = await generateReportPdf(weekData);
-      pdfAttachment = {
-        filename: `coil-report-${monday}.pdf`,
-        content: Buffer.from(pdfBytes).toString("base64"),
-        type: "application/pdf",
-      };
-    } catch (pdfErr) {
-      console.error("PDF generation failed (non-fatal):", pdfErr);
+    if (setting.email_pdf) {
+      try {
+        const pdfBytes = await generateReportPdf(weekData);
+        pdfAttachment = {
+          filename: `coil-report-${monday}.pdf`,
+          content: Buffer.from(pdfBytes).toString("base64"),
+          type: "application/pdf",
+        };
+      } catch (pdfErr) {
+        console.error("PDF generation failed (non-fatal):", pdfErr);
+      }
     }
 
     // Send via Resend

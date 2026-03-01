@@ -14,7 +14,7 @@ function getMondayOfWeek(date: Date): Date {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId, overrideEmail, weekChoice } = body as { userId: string; overrideEmail?: string | null; weekChoice?: "current" | "previous" };
+  const { userId, overrideEmail, weekChoice, includePdf } = body as { userId: string; overrideEmail?: string | null; weekChoice?: "current" | "previous"; includePdf?: boolean };
 
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
@@ -81,17 +81,19 @@ export async function POST(request: NextRequest) {
   const emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
   const emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
 
-  // Generate PDF attachment
+  // Generate PDF attachment (only if requested)
   let pdfAttachment: { filename: string; content: string; type: string } | undefined;
-  try {
-    const pdfBytes = await generateReportPdf(weekData);
-    pdfAttachment = {
-      filename: `coil-report-${usedMonday}.pdf`,
-      content: Buffer.from(pdfBytes).toString("base64"),
-      type: "application/pdf",
-    };
-  } catch (pdfErr) {
-    console.error("PDF generation failed (non-fatal):", pdfErr);
+  if (includePdf) {
+    try {
+      const pdfBytes = await generateReportPdf(weekData);
+      pdfAttachment = {
+        filename: `coil-report-${usedMonday}.pdf`,
+        content: Buffer.from(pdfBytes).toString("base64"),
+        type: "application/pdf",
+      };
+    } catch (pdfErr) {
+      console.error("PDF generation failed (non-fatal):", pdfErr);
+    }
   }
 
   const res = await fetch("https://api.resend.com/emails", {

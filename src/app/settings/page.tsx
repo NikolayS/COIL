@@ -52,6 +52,7 @@ function SettingsInner() {
   const [saved, setSaved] = useState(false);
 
   const [emailEnabled, setEmailEnabled] = useState(true);
+  const [emailPdf, setEmailPdf] = useState(false);
   const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
   const [emailHour, setEmailHour] = useState(18);
   const [timezone, setTimezone] = useState("UTC");
@@ -90,6 +91,7 @@ function SettingsInner() {
       if (data) {
         // weekly_email_enabled: treat null as true (default on)
         setEmailEnabled(data.weekly_email_enabled ?? true);
+        setEmailPdf(data.email_pdf ?? false);
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
         // saved timezone wins over browser detection; fall back to browser if not saved
@@ -112,6 +114,7 @@ function SettingsInner() {
       {
         user_id: user.id,
         weekly_email_enabled: emailEnabled,
+        email_pdf: emailPdf,
         weekly_email_hour: emailHour,
         weekly_email_day: emailDay,
         report_email: reportEmail || user.email,
@@ -140,7 +143,7 @@ function SettingsInner() {
       const res = await fetch("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, overrideEmail, weekChoice: testWeekChoice }),
+        body: JSON.stringify({ userId: user.id, overrideEmail, weekChoice: testWeekChoice, includePdf: emailPdf }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -242,6 +245,24 @@ function SettingsInner() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* PDF attachment toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-[--text]">Attach PDF</span>
+                    <p className="text-xs text-[--text-faint] mt-0.5">Formatted report as PDF attachment</p>
+                  </div>
+                  <button
+                    onClick={() => setEmailPdf(!emailPdf)}
+                    className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
+                    style={{ backgroundColor: emailPdf ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
+                  >
+                    <div
+                      className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200"
+                      style={{ left: emailPdf ? "22px" : "2px" }}
+                    />
+                  </button>
                 </div>
               </>
             )}
