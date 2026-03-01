@@ -99,6 +99,9 @@ jobs:
 
             docker stop coil-new || true
             docker rm coil-new || true
+            # Also stop any container that might have the NEW_PORT bound (stale from prior runs)
+            STALE=$(docker ps -q --filter "publish=127.0.0.1:${NEW_PORT}:3000" 2>/dev/null || true)
+            if [ -n "$STALE" ]; then docker stop $STALE && docker rm $STALE || true; fi
             docker run -d \
               --name coil-new \
               --restart unless-stopped \
