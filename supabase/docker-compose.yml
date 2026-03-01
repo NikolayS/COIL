@@ -65,7 +65,7 @@ services:
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
-      PGRST_JWT_ROLE_CLAIM_KEY: ".aud"
+      PGRST_JWT_ROLE_CLAIM_KEY: ".role"
     ports:
       - "127.0.0.1:3001:3000"
 
