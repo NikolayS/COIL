@@ -114,6 +114,12 @@ jobs:
           script: |
             set -e
 
+            # Abort if critical env vars are empty (secrets not set)
+            if [ -z "$COIL_APP_NEXT_PUBLIC_SUPABASE_URL" ]; then
+              echo "ERROR: COIL_APP_NEXT_PUBLIC_SUPABASE_URL secret is empty — aborting deploy"
+              exit 1
+            fi
+
             # Write /opt/coil/.env.local from GitHub Actions secrets
             {
               printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$COIL_APP_NEXT_PUBLIC_SUPABASE_URL"
@@ -159,10 +165,11 @@ jobs:
               coil-app
 
             # Health check — wait up to 60s (Next.js cold start can be slow)
+            # Use /login (public path, returns 200) instead of / (returns 307 redirect)
             echo "Waiting for new container on port ${NEW_PORT}..."
             HEALTHY=0
             for i in $(seq 1 60); do
-              if curl -sf --max-time 5 http://127.0.0.1:${NEW_PORT}/ > /dev/null 2>&1; then
+              if curl -sf --max-time 5 http://127.0.0.1:${NEW_PORT}/login > /dev/null 2>&1; then
                 echo "Healthy after ${i}s"; HEALTHY=1; break
               fi
               sleep 1
