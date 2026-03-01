@@ -35,6 +35,10 @@ jobs:
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
                 CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
+              -- email_pdf column (added 2026-03-01)
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='email_pdf') THEN
+                ALTER TABLE public.settings ADD COLUMN email_pdf boolean DEFAULT false;
+              END IF;
             END $$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
