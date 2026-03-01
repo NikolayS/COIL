@@ -50,6 +50,7 @@ function SettingsInner() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [emailPdf, setEmailPdf] = useState(false);
@@ -132,8 +133,8 @@ function SettingsInner() {
     );
     setSaving(false);
     if (error) {
-      setTestError(`Save failed: ${error.message}`);
-      setTimeout(() => setTestError(null), 5000);
+      setSaveError(`Save failed: ${error.message}`);
+      setTimeout(() => setSaveError(null), 5000);
     } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -451,6 +452,12 @@ function SettingsInner() {
               )}
             </div>
           </div>
+
+          {saveError && (
+            <p className="text-xs font-mono text-center px-2" style={{ color: "var(--red, #f87171)" }}>
+              {saveError}
+            </p>
+          )}
 
           {/* Save button */}
           <button
