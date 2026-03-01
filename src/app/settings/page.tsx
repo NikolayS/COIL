@@ -313,6 +313,68 @@ function SettingsInner() {
             </div>
           </div>
 
+          {/* Test email card */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
+            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Send Test Email</p>
+
+            <div>
+              <p className="text-xs text-[--text-dim] mb-1">Send to (leave blank to use report email)</p>
+              <input
+                type="email"
+                value={testOverrideEmail}
+                onChange={(e) => setTestOverrideEmail(e.target.value)}
+                placeholder={reportEmail || user?.email || ""}
+                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors"
+                style={{
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              />
+            </div>
+
+            <div>
+              <p className="text-xs text-[--text-dim] mb-2">Week</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["current", "previous"] as const).map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() => setTestWeekChoice(choice)}
+                    className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                    style={{
+                      borderColor: testWeekChoice === choice ? "var(--gold)" : "var(--border)",
+                      backgroundColor: testWeekChoice === choice ? "var(--gold-bg)" : "transparent",
+                      color: testWeekChoice === choice ? "var(--gold)" : "var(--text-muted)",
+                    }}
+                  >
+                    {choice.charAt(0).toUpperCase() + choice.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleTestEmail}
+              disabled={sending}
+              className="w-full py-3 rounded-xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+              style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+            >
+              {sending ? "Sending..." : "Send Test"}
+            </button>
+
+            {testResult && (
+              <p className="text-xs font-mono text-center" style={{ color: "var(--green, #4ade80)" }}>
+                {testResult}
+              </p>
+            )}
+            {testError && (
+              <p className="text-xs font-mono text-center" style={{ color: "var(--red, #f87171)" }}>
+                {testError}
+              </p>
+            )}
+          </div>
+
           {/* Daily reminders card */}
           <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
             <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Daily Reminders</p>
@@ -388,68 +450,6 @@ function SettingsInner() {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Test email card */}
-          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
-            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Send Test Email</p>
-
-            <div>
-              <p className="text-xs text-[--text-dim] mb-1">Send to (leave blank to use report email)</p>
-              <input
-                type="email"
-                value={testOverrideEmail}
-                onChange={(e) => setTestOverrideEmail(e.target.value)}
-                placeholder={reportEmail || user?.email || ""}
-                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors"
-                style={{
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
-            </div>
-
-            <div>
-              <p className="text-xs text-[--text-dim] mb-2">Week</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(["current", "previous"] as const).map((choice) => (
-                  <button
-                    key={choice}
-                    onClick={() => setTestWeekChoice(choice)}
-                    className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
-                    style={{
-                      borderColor: testWeekChoice === choice ? "var(--gold)" : "var(--border)",
-                      backgroundColor: testWeekChoice === choice ? "var(--gold-bg)" : "transparent",
-                      color: testWeekChoice === choice ? "var(--gold)" : "var(--text-muted)",
-                    }}
-                  >
-                    {choice.charAt(0).toUpperCase() + choice.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              onClick={handleTestEmail}
-              disabled={sending}
-              className="w-full py-3 rounded-xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
-              style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
-            >
-              {sending ? "Sending..." : "Send Test"}
-            </button>
-
-            {testResult && (
-              <p className="text-xs font-mono text-center" style={{ color: "var(--green, #4ade80)" }}>
-                {testResult}
-              </p>
-            )}
-            {testError && (
-              <p className="text-xs font-mono text-center" style={{ color: "var(--red, #f87171)" }}>
-                {testError}
-              </p>
-            )}
           </div>
 
           {/* Save button */}
