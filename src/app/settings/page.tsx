@@ -45,7 +45,7 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   label: formatHour(i),
 }));
 
-export default function SettingsPage() {
+function SettingsInner() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -389,5 +389,13 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsInner />
+    </Suspense>
   );
 }
