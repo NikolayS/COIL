@@ -46,9 +46,9 @@ jobs:
             GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI}
             ENVEOF
 
-            # Update Supabase (force-recreate picks up any compose changes)
+            # Update Supabase (start any stopped containers; no force-recreate to avoid DB churn)
             cd /opt/supabase
-            docker compose --env-file .env up -d --force-recreate
+            docker compose --env-file .env up -d
 
             # Fix PLACEHOLDER_AUTH_PW on fresh DB init (idempotent)
             docker exec supabase-db-1 psql -U postgres -d postgres -c \
@@ -135,14 +135,19 @@ jobs:
               --build-arg NEXT_PUBLIC_APP_URL="${COIL_APP_NEXT_PUBLIC_APP_URL}" \
               .
 
-            # Blue/green zero-downtime deploy via nginx upstream swap
-            ACTIVE_PORT=$(grep -oP 'server 127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-enabled/coil | head -1)
-            if [ "$ACTIVE_PORT" = "3000" ]; then NEW_PORT=3001; else NEW_PORT=3000; fi
+            # Blue/green deploy — app uses ports 3000 (blue) and 3002 (green)
+            # Port 3001 is reserved for PostgREST/Supabase
+            ACTIVE_PORT=$(grep -oP 'proxy_pass http://(?:127\.0\.0\.1|localhost):\K(3000|3002)' \
+              /etc/nginx/sites-enabled/coil 2>/dev/null | head -1)
+            if [ -z "$ACTIVE_PORT" ]; then ACTIVE_PORT=3000; fi
+            if [ "$ACTIVE_PORT" = "3000" ]; then NEW_PORT=3002; else NEW_PORT=3000; fi
+            echo "Active port: ${ACTIVE_PORT} → New port: ${NEW_PORT}"
 
+            # Start new container on NEW_PORT
             docker stop coil-new || true
             docker rm coil-new || true
-            STALE=$(docker ps -q --filter "publish=${NEW_PORT}" 2>/dev/null || true)
-            [ -n "$STALE" ] && docker stop $STALE && docker rm $STALE || true
+            STALE=$(docker ps -q --filter "publish=127.0.0.1:${NEW_PORT}" 2>/dev/null || true)
+            if [ -n "$STALE" ]; then docker stop $STALE || true; docker rm $STALE || true; fi
             sleep 1
 
             docker run -d \
@@ -152,24 +157,31 @@ jobs:
               --env-file /opt/coil/.env.local \
               coil-app
 
-            # Health check — wait up to 30s
+            # Health check — wait up to 60s (Next.js cold start can be slow)
             echo "Waiting for new container on port ${NEW_PORT}..."
-            for i in $(seq 1 30); do
-              if curl -sf http://127.0.0.1:${NEW_PORT}/ > /dev/null 2>&1; then
-                echo "Healthy after ${i}s"; break
-              fi
-              if [ $i -eq 30 ]; then
-                echo "Health check failed — keeping old container"
-                docker stop coil-new && docker rm coil-new
-                exit 1
+            HEALTHY=0
+            for i in $(seq 1 60); do
+              if curl -sf --max-time 5 http://127.0.0.1:${NEW_PORT}/ > /dev/null 2>&1; then
+                echo "Healthy after ${i}s"; HEALTHY=1; break
               fi
               sleep 1
             done
+            if [ "$HEALTHY" != "1" ]; then
+              echo "Health check failed after 60s — rolling back"
+              docker logs coil-new --tail 50 2>&1 || true
+              docker stop coil-new || true
+              docker rm coil-new || true
+              exit 1
+            fi
 
-            # Swap upstream — nginx reload is graceful
-            sudo sed -i "s|server 127.0.0.1:${ACTIVE_PORT};|server 127.0.0.1:${NEW_PORT};|" /etc/nginx/sites-enabled/coil
-            sudo nginx -s reload
+            # Swap nginx to the new port (only touch app proxy_pass lines)
+            sudo sed -i "s|proxy_pass http://127.0.0.1:${ACTIVE_PORT};|proxy_pass http://127.0.0.1:${NEW_PORT};|g" \
+              /etc/nginx/sites-enabled/coil
+            sudo sed -i "s|proxy_pass http://localhost:${ACTIVE_PORT};|proxy_pass http://127.0.0.1:${NEW_PORT};|g" \
+              /etc/nginx/sites-enabled/coil
+            sudo nginx -t && sudo nginx -s reload
 
+            # Cut over: stop old container, promote coil-new → coil
             docker stop coil || true
             docker rm coil || true
             docker rename coil-new coil
