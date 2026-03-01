@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { generateReport, type WeekData } from "@/lib/report";
+import { generateReportPdf } from "@/lib/generatePdf";
 import { NextRequest, NextResponse } from "next/server";
 
 function getMondayOfWeek(date: Date): Date {
@@ -80,6 +81,19 @@ export async function POST(request: NextRequest) {
   const emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
   const emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
 
+  // Generate PDF attachment
+  let pdfAttachment: { filename: string; content: string; type: string } | undefined;
+  try {
+    const pdfBytes = await generateReportPdf(weekData);
+    pdfAttachment = {
+      filename: `coil-report-${usedMonday}.pdf`,
+      content: Buffer.from(pdfBytes).toString("base64"),
+      type: "application/pdf",
+    };
+  } catch (pdfErr) {
+    console.error("PDF generation failed (non-fatal):", pdfErr);
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -91,7 +105,8 @@ export async function POST(request: NextRequest) {
       to: [email],
       subject: emailSubject,
       text: emailBody,
-      html: `<pre style="font-family:monospace;font-size:14px;line-height:1.6;white-space:pre-wrap">${emailBody.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`,
+      html: `<pre style="font-family:monospace;font-size:14px;line-height:1.6;white-space:pre-wrap">${emailBody.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`,
+      attachments: pdfAttachment ? [pdfAttachment] : undefined,
     }),
   });
 
