@@ -14,7 +14,20 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Demo mode — home page", () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context, baseURL }) => {
+    // Set demo cookie so middleware allows access without authentication
+    const appURL = new URL(baseURL ?? process.env.PLAYWRIGHT_BASE_URL ?? "https://coil.5am.team");
+    await context.addCookies([
+      {
+        name: "coil_demo",
+        value: "1",
+        domain: appURL.hostname,
+        path: "/",
+        httpOnly: false,
+        secure: appURL.protocol === "https:",
+        sameSite: "Lax",
+      },
+    ]);
     // Clear localStorage to ensure clean demo state
     await page.goto("/");
     await page.evaluate(() => {
