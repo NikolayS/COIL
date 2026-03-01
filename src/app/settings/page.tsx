@@ -55,6 +55,10 @@ function SettingsInner() {
   const [emailPdf, setEmailPdf] = useState(false);
   const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
   const [emailHour, setEmailHour] = useState(18);
+  const [reminder1Enabled, setReminder1Enabled] = useState(true);
+  const [reminder1Hour, setReminder1Hour] = useState(8);
+  const [reminder2Enabled, setReminder2Enabled] = useState(false);
+  const [reminder2Hour, setReminder2Hour] = useState(20);
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
 
@@ -94,6 +98,10 @@ function SettingsInner() {
         setEmailPdf(data.email_pdf ?? false);
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
+        setReminder1Enabled(data.reminder1_enabled ?? true);
+        setReminder1Hour(data.reminder1_hour ?? 8);
+        setReminder2Enabled(data.reminder2_enabled ?? false);
+        setReminder2Hour(data.reminder2_hour ?? 20);
         // saved timezone wins over browser detection; fall back to browser if not saved
         setTimezone(data.timezone || browserTz);
         setReportEmail(data.report_email ?? user.email ?? "");
@@ -117,6 +125,10 @@ function SettingsInner() {
         email_pdf: emailPdf,
         weekly_email_hour: emailHour,
         weekly_email_day: emailDay,
+        reminder1_enabled: reminder1Enabled,
+        reminder1_hour: reminder1Hour,
+        reminder2_enabled: reminder2Enabled,
+        reminder2_hour: reminder2Hour,
         report_email: reportEmail || user.email,
         timezone,
         updated_at: new Date().toISOString(),
@@ -337,6 +349,83 @@ function SettingsInner() {
                       </button>
                     ))
                   )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Daily reminders card */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
+            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Daily Reminders</p>
+
+            {/* Reminder 1 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm text-[--text]">Morning reminder</span>
+                  <p className="text-xs text-[--text-faint] mt-0.5">Fill in yesterday's entries</p>
+                </div>
+                <button
+                  onClick={() => setReminder1Enabled(!reminder1Enabled)}
+                  className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
+                  style={{ backgroundColor: reminder1Enabled ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
+                >
+                  <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200" style={{ left: reminder1Enabled ? "22px" : "2px" }} />
+                </button>
+              </div>
+              {reminder1Enabled && (
+                <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {HOUR_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setReminder1Hour(opt.value)}
+                      className="py-2 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                      style={{
+                        borderColor: reminder1Hour === opt.value ? "var(--gold)" : "var(--border)",
+                        backgroundColor: reminder1Hour === opt.value ? "var(--gold-bg)" : "transparent",
+                        color: reminder1Hour === opt.value ? "var(--gold)" : "var(--text-muted)",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ height: "1px", backgroundColor: "var(--border)" }} />
+
+            {/* Reminder 2 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm text-[--text]">Evening reminder</span>
+                  <p className="text-xs text-[--text-faint] mt-0.5">End of day check-in</p>
+                </div>
+                <button
+                  onClick={() => setReminder2Enabled(!reminder2Enabled)}
+                  className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
+                  style={{ backgroundColor: reminder2Enabled ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
+                >
+                  <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200" style={{ left: reminder2Enabled ? "22px" : "2px" }} />
+                </button>
+              </div>
+              {reminder2Enabled && (
+                <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {HOUR_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setReminder2Hour(opt.value)}
+                      className="py-2 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                      style={{
+                        borderColor: reminder2Hour === opt.value ? "var(--gold)" : "var(--border)",
+                        backgroundColor: reminder2Hour === opt.value ? "var(--gold-bg)" : "transparent",
+                        color: reminder2Hour === opt.value ? "var(--gold)" : "var(--text-muted)",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

@@ -45,6 +45,18 @@ jobs:
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='email_pdf') THEN
                 ALTER TABLE public.settings ADD COLUMN email_pdf boolean DEFAULT false;
               END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder1_enabled') THEN
+                ALTER TABLE public.settings ADD COLUMN reminder1_enabled boolean DEFAULT true;
+              END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder1_hour') THEN
+                ALTER TABLE public.settings ADD COLUMN reminder1_hour integer DEFAULT 8;
+              END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder2_enabled') THEN
+                ALTER TABLE public.settings ADD COLUMN reminder2_enabled boolean DEFAULT false;
+              END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='reminder2_hour') THEN
+                ALTER TABLE public.settings ADD COLUMN reminder2_hour integer DEFAULT 20;
+              END IF;
             END $$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
@@ -71,5 +83,12 @@ jobs:
               -p 127.0.0.1:3000:3000 \
               --env-file .env.local \
               coil-app
+            # Ensure cron jobs are set (idempotent)
+            CRON_SECRET=$(grep CRON_SECRET /opt/coil/.env.local | cut -d= -f2)
+            (crontab -l 2>/dev/null | grep -v "api/cron/"; \
+              echo "0 20 * * 0 curl -s -X POST https://coil.5am.team/api/cron/weekly-email -H \"Authorization: Bearer $CRON_SECRET\" >> /var/log/coil-cron.log 2>&1"; \
+              echo "0 * * * * curl -s https://coil.5am.team/api/cron/daily-reminder -H \"Authorization: Bearer $CRON_SECRET\" >> /var/log/coil-cron.log 2>&1" \
+            ) | crontab -
+
             echo "Deploy complete: $(date -u)"
 
