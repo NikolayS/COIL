@@ -54,6 +54,7 @@ function SettingsInner() {
 
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [emailPdf, setEmailPdf] = useState(false);
+  const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   const [emailDay, setEmailDay] = useState<"saturday" | "sunday">("sunday");
   const [emailHour, setEmailHour] = useState(18);
   const [reminder1Enabled, setReminder1Enabled] = useState(true);
@@ -92,6 +93,7 @@ function SettingsInner() {
         // weekly_email_enabled: treat null as true (default on)
         setEmailEnabled(data.weekly_email_enabled ?? true);
         setEmailPdf(data.email_pdf ?? false);
+        setWeekStart(data.week_start ?? "monday");
         setEmailHour(data.weekly_email_hour ?? 18);
         if (data.weekly_email_day) setEmailDay(data.weekly_email_day);
         setReminder1Enabled(data.reminder1_enabled ?? true);
@@ -119,6 +121,7 @@ function SettingsInner() {
         user_id: user.id,
         weekly_email_enabled: emailEnabled,
         email_pdf: emailPdf,
+        week_start: weekStart,
         weekly_email_hour: emailHour,
         weekly_email_day: emailDay,
         reminder1_enabled: reminder1Enabled,
@@ -215,24 +218,24 @@ function SettingsInner() {
               <>
                 {/* Day selector */}
                 <div>
-                  <p className="text-xs text-[--text-dim] mb-2">Week ends on</p>
+                  <p className="text-xs text-[--text-dim] mb-2">First day of week</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {([
-                      { value: "saturday", label: "Saturday", delivers: "Sun" },
-                      { value: "sunday", label: "Sunday", delivers: "Mon" },
+                      { value: "monday", label: "Monday", delivers: "Mon" },
+                      { value: "sunday", label: "Sunday", delivers: "Sun" },
                     ] as const).map(({ value, label, delivers }) => (
                       <button
                         key={value}
-                        onClick={() => setEmailDay(value)}
+                        onClick={() => setWeekStart(value)}
                         className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95 flex flex-col items-center gap-0.5"
                         style={{
-                          borderColor: emailDay === value ? "var(--gold)" : "var(--border)",
-                          backgroundColor: emailDay === value ? "var(--gold-bg)" : "transparent",
-                          color: emailDay === value ? "var(--gold)" : "var(--text-muted)",
+                          borderColor: weekStart === value ? "var(--gold)" : "var(--border)",
+                          backgroundColor: weekStart === value ? "var(--gold-bg)" : "transparent",
+                          color: weekStart === value ? "var(--gold)" : "var(--text-muted)",
                         }}
                       >
                         <span>{label}</span>
-                        <span style={{ fontSize: "10px", opacity: 0.7 }}>delivers {delivers}</span>
+                        <span style={{ fontSize: "10px", opacity: 0.7 }}>report {delivers}</span>
                       </button>
                     ))}
                   </div>
