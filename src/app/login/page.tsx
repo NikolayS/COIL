@@ -62,15 +62,15 @@ function LoginInner() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-5" style={{ background: "var(--bg)" }}>
+    <div className="min-h-screen flex items-start justify-center px-5 pt-12" style={{ background: "var(--bg)" }}>
       <div className="w-full max-w-sm">
         <h1 className="text-3xl font-bold tracking-tight mb-1" style={{ color: "var(--gold)" }}>COIL</h1>
-        <p className="text-xs font-mono tracking-[0.12em] text-[--text-faint] uppercase mb-10">
+        <p className="text-xs font-mono tracking-[0.12em] text-[--text-faint] uppercase mb-7">
           Daily Territory Tracker & Journal
         </p>
 
         {!sent ? (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {/* Google OAuth */}
             <button
               onClick={handleGoogle}
@@ -87,15 +87,15 @@ function LoginInner() {
               Continue with Google
             </button>
 
-            <div className="flex items-center gap-3 py-1">
+            <div className="flex items-center gap-3 py-0.5">
               <div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} />
               <span className="text-xs font-mono text-[--text-faint]">or use email</span>
               <div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} />
             </div>
 
-            <form onSubmit={handleSend} className="space-y-4">
+            <form onSubmit={handleSend} className="space-y-3">
               <div>
-                <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">Email</p>
+                <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-1.5">Email</p>
                 <input
                   type="email"
                   inputMode="email"
@@ -117,6 +117,12 @@ function LoginInner() {
                 {loading ? "Sending…" : "Send magic link"}
               </button>
             </form>
+
+            <div className="flex items-center gap-3 py-0.5">
+              <div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} />
+              <span className="text-xs font-mono text-[--text-faint]">or just test it</span>
+              <div className="flex-1 h-px" style={{ backgroundColor: "var(--border)" }} />
+            </div>
 
             <button
               onClick={() => {
