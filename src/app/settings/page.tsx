@@ -4,7 +4,7 @@
 // alter table settings add column if not exists weekly_email_day text default 'sunday';
 // alter table settings add column if not exists report_email text;
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
