@@ -7,12 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
-    name: Deploy to coil.5am.team
+  migrate:
+    name: DB migrations
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Deploy via SSH
+      - name: Run migrations via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -25,17 +25,17 @@ jobs:
             cd /opt/supabase
             docker compose --env-file .env up -d --force-recreate
 
-            # Apply any new DB migrations (idempotent)
-            AUTH_PW=$(grep AUTH_ADMIN_PW .env | cut -d= -f2)
-            docker exec supabase-db-1 psql -U postgres -d postgres -v auth_pw="$AUTH_PW" << 'SQLEOF'
+            # Apply DB migrations (idempotent — safe to run on every deploy)
+            docker exec supabase-db-1 psql -U postgres -d postgres << 'SQLEOF'
             DO $$ BEGIN
+              -- RLS policies
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='weeks' AND policyname='users see own weeks') THEN
                 CREATE POLICY "users see own weeks" ON public.weeks FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
                 CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
-              -- settings columns (idempotent)
+              -- settings columns
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='weekly_email_day') THEN
                 ALTER TABLE public.settings ADD COLUMN weekly_email_day text DEFAULT 'sunday';
               END IF;
@@ -60,11 +60,26 @@ jobs:
             END $$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
-            -- Reload PostgREST schema cache after any DDL
+            -- Reload PostgREST schema cache
             NOTIFY pgrst, 'reload schema';
             SQLEOF
 
-            # Update Next.js app
+            echo "Migrations complete: $(date -u)"
+
+  deploy-app:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    needs: migrate
+    steps:
+      - name: Build and deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+
             cd /opt/coil
             git fetch origin
             git reset --hard origin/main
@@ -83,6 +98,7 @@ jobs:
               -p 127.0.0.1:3000:3000 \
               --env-file .env.local \
               coil-app
+
             # Ensure cron jobs are set (idempotent)
             CRON_SECRET=$(grep CRON_SECRET /opt/coil/.env.local | cut -d= -f2)
             (crontab -l 2>/dev/null | grep -v "api/cron/"; \
@@ -91,4 +107,3 @@ jobs:
             ) | crontab -
 
             echo "Deploy complete: $(date -u)"
-
