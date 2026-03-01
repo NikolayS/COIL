@@ -62,12 +62,7 @@ function SettingsInner() {
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
 
-  const [tzSearch, setTzSearch] = useState("");
   const allTimezones = useMemo(() => getAllTimezones(), []);
-  const filteredTimezones = useMemo(() => {
-    const q = tzSearch.toLowerCase();
-    return q ? allTimezones.filter((tz) => tz.toLowerCase().includes(q)) : allTimezones;
-  }, [tzSearch, allTimezones]);
 
   const [sending, setSending] = useState(false);
   const [testOverrideEmail, setTestOverrideEmail] = useState("");
@@ -300,57 +295,21 @@ function SettingsInner() {
               </p>
             </div>
 
-            {/* Timezone — native dropdown with search */}
+            {/* Timezone — native select */}
             <div>
               <p className="text-xs text-[--text-dim] mb-1">Timezone</p>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={tzSearch || timezone}
-                  onChange={(e) => setTzSearch(e.target.value)}
-                  className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors pr-8"
-                  style={{ color: "var(--text)", border: "1px solid var(--border)" }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "var(--gold)";
-                    setTzSearch("");
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "var(--border)";
-                    setTimeout(() => setTzSearch(""), 200);
-                  }}
-                  placeholder="Search timezone..."
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[--text-faint] pointer-events-none text-xs">▾</span>
-              </div>
-              {tzSearch !== "" && (
-                <div
-                  className="rounded-lg border overflow-y-auto max-h-48 mt-1"
-                  style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-card)" }}
-                >
-                  {filteredTimezones.length === 0 ? (
-                    <p className="text-xs font-mono text-[--text-faint] px-3 py-2">No match</p>
-                  ) : (
-                    filteredTimezones.slice(0, 50).map((tz) => (
-                      <button
-                        key={tz}
-                        onMouseDown={() => {
-                          setTimezone(tz);
-                          setTzSearch("");
-                        }}
-                        className="w-full text-left px-3 py-2 text-xs font-mono transition-colors"
-                        style={{
-                          color: tz === timezone ? "var(--gold)" : "var(--text)",
-                          backgroundColor: tz === timezone ? "var(--gold-bg)" : "transparent",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tz === timezone ? "var(--gold-bg)" : "var(--bg)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = tz === timezone ? "var(--gold-bg)" : "transparent")}
-                      >
-                        {tz}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors appearance-none"
+                style={{ color: "var(--text)", border: "1px solid var(--border)", backgroundColor: "var(--bg-card)" }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              >
+                {allTimezones.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
             </div>
           </div>
 
