@@ -91,14 +91,43 @@ jobs:
               --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
               --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
               .
-            docker stop coil || true
-            docker rm coil || true
+
+            # Blue/green zero-downtime deploy via nginx upstream swap
+            # nginx config uses `upstream coil_app { server 127.0.0.1:PORT; }`
+            ACTIVE_PORT=$(grep -oP 'server 127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-enabled/coil | head -1)
+            if [ "$ACTIVE_PORT" = "3000" ]; then NEW_PORT=3001; else NEW_PORT=3000; fi
+
+            docker stop coil-new || true
+            docker rm coil-new || true
             docker run -d \
-              --name coil \
+              --name coil-new \
               --restart unless-stopped \
-              -p 127.0.0.1:3000:3000 \
+              -p 127.0.0.1:${NEW_PORT}:3000 \
               --env-file .env.local \
               coil-app
+
+            # Health check — wait up to 30s
+            echo "Waiting for new container on port ${NEW_PORT}..."
+            for i in $(seq 1 30); do
+              if curl -sf http://127.0.0.1:${NEW_PORT}/ > /dev/null 2>&1; then
+                echo "Healthy after ${i}s"; break
+              fi
+              if [ $i -eq 30 ]; then
+                echo "Health check failed — keeping old container"
+                docker stop coil-new && docker rm coil-new
+                exit 1
+              fi
+              sleep 1
+            done
+
+            # Swap upstream — nginx reload is graceful (in-flight requests finish on old)
+            sudo sed -i "s|server 127.0.0.1:${ACTIVE_PORT};|server 127.0.0.1:${NEW_PORT};|" /etc/nginx/sites-enabled/coil
+            sudo nginx -s reload
+
+            # Kill old container, rename new to canonical name
+            docker stop coil || true
+            docker rm coil || true
+            docker rename coil-new coil
 
             # Ensure cron jobs are set (idempotent)
             CRON_SECRET=$(grep CRON_SECRET /opt/coil/.env.local | cut -d= -f2)
