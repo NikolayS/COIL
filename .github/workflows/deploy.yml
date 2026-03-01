@@ -42,6 +42,8 @@ jobs:
             END $$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
+            -- Reload PostgREST schema cache after any DDL
+            NOTIFY pgrst, 'reload schema';
             SQLEOF
 
             # Update Next.js app
