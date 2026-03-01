@@ -288,40 +288,49 @@ function SettingsInner() {
               </p>
             </div>
 
-            {/* Timezone — searchable selector */}
+            {/* Timezone — native dropdown with search */}
             <div>
               <p className="text-xs text-[--text-dim] mb-1">Timezone</p>
-              <input
-                type="text"
-                value={tzSearch}
-                onChange={(e) => setTzSearch(e.target.value)}
-                placeholder={timezone}
-                className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors mb-1"
-                style={{ color: "var(--text)", border: "1px solid var(--border)" }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
-              {tzSearch && (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={tzSearch || timezone}
+                  onChange={(e) => setTzSearch(e.target.value)}
+                  className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors pr-8"
+                  style={{ color: "var(--text)", border: "1px solid var(--border)" }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "var(--gold)";
+                    setTzSearch("");
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "var(--border)";
+                    setTimeout(() => setTzSearch(""), 200);
+                  }}
+                  placeholder="Search timezone..."
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[--text-faint] pointer-events-none text-xs">▾</span>
+              </div>
+              {tzSearch !== "" && (
                 <div
-                  className="rounded-lg border overflow-y-auto max-h-40"
-                  style={{ borderColor: "var(--border)", backgroundColor: "var(--bg)" }}
+                  className="rounded-lg border overflow-y-auto max-h-48 mt-1"
+                  style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-card)" }}
                 >
                   {filteredTimezones.length === 0 ? (
                     <p className="text-xs font-mono text-[--text-faint] px-3 py-2">No match</p>
                   ) : (
-                    filteredTimezones.map((tz) => (
+                    filteredTimezones.slice(0, 50).map((tz) => (
                       <button
                         key={tz}
-                        onClick={() => {
+                        onMouseDown={() => {
                           setTimezone(tz);
                           setTzSearch("");
                         }}
                         className="w-full text-left px-3 py-2 text-xs font-mono transition-colors"
                         style={{
-                          color: tz === timezone ? "var(--gold)" : "var(--text-muted)",
+                          color: tz === timezone ? "var(--gold)" : "var(--text)",
                           backgroundColor: tz === timezone ? "var(--gold-bg)" : "transparent",
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-card)")}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tz === timezone ? "var(--gold-bg)" : "var(--bg)")}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = tz === timezone ? "var(--gold-bg)" : "transparent")}
                       >
                         {tz}
@@ -329,9 +338,6 @@ function SettingsInner() {
                     ))
                   )}
                 </div>
-              )}
-              {!tzSearch && (
-                <p className="text-xs font-mono text-[--text-muted]">{timezone}</p>
               )}
             </div>
           </div>
