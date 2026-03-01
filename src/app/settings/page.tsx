@@ -68,7 +68,7 @@ function SettingsInner() {
 
   const [sending, setSending] = useState(false);
   const [testOverrideEmail, setTestOverrideEmail] = useState("");
-  const [testWeekChoice, setTestWeekChoice] = useState<"current" | "previous">("previous");
+  const [testWeekChoice, setTestWeekChoice] = useState<"current" | "previous">("current");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
