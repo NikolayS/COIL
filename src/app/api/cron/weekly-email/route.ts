@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const monday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
   const nowDay = new Date().getDay(); // 0=Sun, 6=Sat
   let sent = 0;
 
@@ -65,12 +64,16 @@ export async function POST(request: NextRequest) {
     // Use report_email if set, otherwise fall back to auth email
     const email = (setting.report_email as string | null) || authEmail;
 
-    // Check if today matches user's preferred delivery day (default: sunday)
+    // Week ends Saturday → deliver Sunday (0); week ends Sunday → deliver Monday (1)
     const prefDay = (setting.weekly_email_day as string | null) ?? "sunday";
-    const sendOnDay = prefDay === "saturday" ? 6 : 0;
+    const sendOnDay = prefDay === "saturday" ? 0 : 1; // day after week ends
     if (nowDay !== sendOnDay) continue;
 
-    // Fetch current week data
+    // The completed week ended yesterday — get that week's Monday
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const monday = getMondayOfWeek(yesterday).toISOString().slice(0, 10);
+
+    // Fetch that week's data
     const { data: weekRow } = await supabase
       .from("weeks")
       .select("data")
