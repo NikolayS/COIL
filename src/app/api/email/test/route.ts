@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
       to: [email],
       subject: emailSubject,
       text: emailBody,
+      html: `<pre style="font-family:monospace;font-size:14px;line-height:1.6;white-space:pre-wrap">${emailBody.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`,
     }),
   });
 

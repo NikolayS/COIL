@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
         to: [email],
         subject: `COIL Weekly Report — Week of ${monday}`,
         text: report,
+        html: `<pre style="font-family:monospace;font-size:14px;line-height:1.6;white-space:pre-wrap">${report.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`,
       }),
     });
 
