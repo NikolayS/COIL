@@ -23,28 +23,29 @@ jobs:
             set -e
 
             # Write /opt/supabase/.env from GitHub Actions secrets
-            cat > /opt/supabase/.env << ENVEOF
-            JWT_SECRET=${SUPABASE_JWT_SECRET}
-            POSTGRES_PASSWORD=${SUPABASE_POSTGRES_PASSWORD}
-            POSTGRES_DB=${SUPABASE_POSTGRES_DB}
-            POSTGRES_USER=${SUPABASE_POSTGRES_USER}
-            ANON_KEY=${SUPABASE_ANON_KEY}
-            SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-            AUTH_ADMIN_PW=${SUPABASE_AUTH_ADMIN_PW}
-            SITE_URL=${SUPABASE_SITE_URL}
-            API_EXTERNAL_URL=${SUPABASE_API_EXTERNAL_URL}
-            SMTP_HOST=${SUPABASE_SMTP_HOST}
-            SMTP_PORT=${SUPABASE_SMTP_PORT}
-            SMTP_USER=${SUPABASE_SMTP_USER}
-            SMTP_PASS=${SUPABASE_SMTP_PASS}
-            SMTP_SENDER_NAME=${SUPABASE_SMTP_SENDER_NAME}
-            SMTP_ADMIN_EMAIL=${SUPABASE_SMTP_ADMIN_EMAIL}
-            MAILER_URLPATHS_CONFIRMATION=${SUPABASE_MAILER_URLPATHS_CONFIRMATION}
-            GOTRUE_EXTERNAL_GOOGLE_ENABLED=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_ENABLED}
-            GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID}
-            GOTRUE_EXTERNAL_GOOGLE_SECRET=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_SECRET}
-            GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI}
-            ENVEOF
+            # Using printf per-line to avoid heredoc expansion issues
+            {
+              printf 'JWT_SECRET=%s\n' "$SUPABASE_JWT_SECRET"
+              printf 'POSTGRES_PASSWORD=%s\n' "$SUPABASE_POSTGRES_PASSWORD"
+              printf 'POSTGRES_DB=%s\n' "$SUPABASE_POSTGRES_DB"
+              printf 'POSTGRES_USER=%s\n' "$SUPABASE_POSTGRES_USER"
+              printf 'ANON_KEY=%s\n' "$SUPABASE_ANON_KEY"
+              printf 'SERVICE_ROLE_KEY=%s\n' "$SUPABASE_SERVICE_ROLE_KEY"
+              printf 'AUTH_ADMIN_PW=%s\n' "$SUPABASE_AUTH_ADMIN_PW"
+              printf 'SITE_URL=%s\n' "$SUPABASE_SITE_URL"
+              printf 'API_EXTERNAL_URL=%s\n' "$SUPABASE_API_EXTERNAL_URL"
+              printf 'SMTP_HOST=%s\n' "$SUPABASE_SMTP_HOST"
+              printf 'SMTP_PORT=%s\n' "$SUPABASE_SMTP_PORT"
+              printf 'SMTP_USER=%s\n' "$SUPABASE_SMTP_USER"
+              printf 'SMTP_PASS=%s\n' "$SUPABASE_SMTP_PASS"
+              printf 'SMTP_SENDER_NAME=%s\n' "$SUPABASE_SMTP_SENDER_NAME"
+              printf 'SMTP_ADMIN_EMAIL=%s\n' "$SUPABASE_SMTP_ADMIN_EMAIL"
+              printf 'MAILER_URLPATHS_CONFIRMATION=%s\n' "$SUPABASE_MAILER_URLPATHS_CONFIRMATION"
+              printf 'GOTRUE_EXTERNAL_GOOGLE_ENABLED=%s\n' "$SUPABASE_GOTRUE_EXTERNAL_GOOGLE_ENABLED"
+              printf 'GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=%s\n' "$SUPABASE_GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID"
+              printf 'GOTRUE_EXTERNAL_GOOGLE_SECRET=%s\n' "$SUPABASE_GOTRUE_EXTERNAL_GOOGLE_SECRET"
+              printf 'GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=%s\n' "$SUPABASE_GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI"
+            } > /opt/supabase/.env
 
             # Update Supabase (force-recreate picks up any compose changes)
             cd /opt/supabase
@@ -114,15 +115,15 @@ jobs:
             set -e
 
             # Write /opt/coil/.env.local from GitHub Actions secrets
-            cat > /opt/coil/.env.local << ENVEOF
-            NEXT_PUBLIC_SUPABASE_URL=${COIL_APP_NEXT_PUBLIC_SUPABASE_URL}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=${COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY}
-            NEXT_PUBLIC_SITE_URL=${COIL_APP_NEXT_PUBLIC_SITE_URL}
-            NEXT_PUBLIC_APP_URL=${COIL_APP_NEXT_PUBLIC_APP_URL}
-            SUPABASE_SERVICE_ROLE_KEY=${COIL_APP_SUPABASE_SERVICE_ROLE_KEY}
-            RESEND_API_KEY=${COIL_APP_RESEND_API_KEY}
-            CRON_SECRET=${COIL_APP_CRON_SECRET}
-            ENVEOF
+            {
+              printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$COIL_APP_NEXT_PUBLIC_SUPABASE_URL"
+              printf 'NEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' "$COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY"
+              printf 'NEXT_PUBLIC_SITE_URL=%s\n' "$COIL_APP_NEXT_PUBLIC_SITE_URL"
+              printf 'NEXT_PUBLIC_APP_URL=%s\n' "$COIL_APP_NEXT_PUBLIC_APP_URL"
+              printf 'SUPABASE_SERVICE_ROLE_KEY=%s\n' "$COIL_APP_SUPABASE_SERVICE_ROLE_KEY"
+              printf 'RESEND_API_KEY=%s\n' "$COIL_APP_RESEND_API_KEY"
+              printf 'CRON_SECRET=%s\n' "$COIL_APP_CRON_SECRET"
+            } > /opt/coil/.env.local
 
             cd /opt/coil
             git fetch origin
