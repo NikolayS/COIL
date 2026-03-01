@@ -12,20 +12,51 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Run migrations via SSH
+      - name: Write env files and run migrations via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: SUPABASE_JWT_SECRET,SUPABASE_POSTGRES_PASSWORD,SUPABASE_POSTGRES_DB,SUPABASE_POSTGRES_USER,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_AUTH_ADMIN_PW,SUPABASE_SITE_URL,SUPABASE_API_EXTERNAL_URL,SUPABASE_SMTP_HOST,SUPABASE_SMTP_PORT,SUPABASE_SMTP_USER,SUPABASE_SMTP_PASS,SUPABASE_SMTP_SENDER_NAME,SUPABASE_SMTP_ADMIN_EMAIL,SUPABASE_MAILER_URLPATHS_CONFIRMATION,SUPABASE_GOTRUE_EXTERNAL_GOOGLE_ENABLED,SUPABASE_GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID,SUPABASE_GOTRUE_EXTERNAL_GOOGLE_SECRET,SUPABASE_GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI
           script: |
             set -e
+
+            # Write /opt/supabase/.env from GitHub Actions secrets
+            cat > /opt/supabase/.env << ENVEOF
+            JWT_SECRET=${SUPABASE_JWT_SECRET}
+            POSTGRES_PASSWORD=${SUPABASE_POSTGRES_PASSWORD}
+            POSTGRES_DB=${SUPABASE_POSTGRES_DB}
+            POSTGRES_USER=${SUPABASE_POSTGRES_USER}
+            ANON_KEY=${SUPABASE_ANON_KEY}
+            SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+            AUTH_ADMIN_PW=${SUPABASE_AUTH_ADMIN_PW}
+            SITE_URL=${SUPABASE_SITE_URL}
+            API_EXTERNAL_URL=${SUPABASE_API_EXTERNAL_URL}
+            SMTP_HOST=${SUPABASE_SMTP_HOST}
+            SMTP_PORT=${SUPABASE_SMTP_PORT}
+            SMTP_USER=${SUPABASE_SMTP_USER}
+            SMTP_PASS=${SUPABASE_SMTP_PASS}
+            SMTP_SENDER_NAME=${SUPABASE_SMTP_SENDER_NAME}
+            SMTP_ADMIN_EMAIL=${SUPABASE_SMTP_ADMIN_EMAIL}
+            MAILER_URLPATHS_CONFIRMATION=${SUPABASE_MAILER_URLPATHS_CONFIRMATION}
+            GOTRUE_EXTERNAL_GOOGLE_ENABLED=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_ENABLED}
+            GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID}
+            GOTRUE_EXTERNAL_GOOGLE_SECRET=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_SECRET}
+            GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=${SUPABASE_GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI}
+            ENVEOF
 
             # Update Supabase (force-recreate picks up any compose changes)
             cd /opt/supabase
             docker compose --env-file .env up -d --force-recreate
 
-            # Apply DB migrations (idempotent — safe to run on every deploy)
+            # Fix PLACEHOLDER_AUTH_PW on fresh DB init (idempotent)
+            docker exec supabase-db-1 psql -U postgres -d postgres -c \
+              "ALTER ROLE supabase_auth_admin WITH PASSWORD '${SUPABASE_AUTH_ADMIN_PW}';" || true
+            docker exec supabase-db-1 psql -U postgres -d postgres -c \
+              "ALTER ROLE authenticator WITH PASSWORD '${SUPABASE_AUTH_ADMIN_PW}';" || true
+
+            # Apply DB migrations (idempotent)
             cat > /tmp/migrate.sql << 'EOF'
             DO $body$ BEGIN
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='weeks' AND policyname='users see own weeks') THEN
@@ -72,47 +103,53 @@ jobs:
     runs-on: ubuntu-latest
     needs: migrate
     steps:
-      - name: Build and deploy via SSH
+      - name: Write env file, build and deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: COIL_APP_NEXT_PUBLIC_SUPABASE_URL,COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY,COIL_APP_NEXT_PUBLIC_SITE_URL,COIL_APP_NEXT_PUBLIC_APP_URL,COIL_APP_SUPABASE_SERVICE_ROLE_KEY,COIL_APP_RESEND_API_KEY,COIL_APP_CRON_SECRET
           script: |
             set -e
+
+            # Write /opt/coil/.env.local from GitHub Actions secrets
+            cat > /opt/coil/.env.local << ENVEOF
+            NEXT_PUBLIC_SUPABASE_URL=${COIL_APP_NEXT_PUBLIC_SUPABASE_URL}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY}
+            NEXT_PUBLIC_SITE_URL=${COIL_APP_NEXT_PUBLIC_SITE_URL}
+            NEXT_PUBLIC_APP_URL=${COIL_APP_NEXT_PUBLIC_APP_URL}
+            SUPABASE_SERVICE_ROLE_KEY=${COIL_APP_SUPABASE_SERVICE_ROLE_KEY}
+            RESEND_API_KEY=${COIL_APP_RESEND_API_KEY}
+            CRON_SECRET=${COIL_APP_CRON_SECRET}
+            ENVEOF
 
             cd /opt/coil
             git fetch origin
             git reset --hard origin/main
-            eval $(grep -E '^NEXT_PUBLIC_' .env.local | sed 's/^/export /')
+
             docker build -t coil-app \
-              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-              --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
-              --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="${COIL_APP_NEXT_PUBLIC_SUPABASE_URL}" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
+              --build-arg NEXT_PUBLIC_SITE_URL="${COIL_APP_NEXT_PUBLIC_SITE_URL}" \
+              --build-arg NEXT_PUBLIC_APP_URL="${COIL_APP_NEXT_PUBLIC_APP_URL}" \
               .
 
             # Blue/green zero-downtime deploy via nginx upstream swap
-            # nginx config uses `upstream coil_app { server 127.0.0.1:PORT; }`
             ACTIVE_PORT=$(grep -oP 'server 127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-enabled/coil | head -1)
             if [ "$ACTIVE_PORT" = "3000" ]; then NEW_PORT=3001; else NEW_PORT=3000; fi
 
             docker stop coil-new || true
             docker rm coil-new || true
-            # Kill any container that has NEW_PORT bound (stale from prior runs)
             STALE=$(docker ps -q --filter "publish=${NEW_PORT}" 2>/dev/null || true)
-            if [ -n "$STALE" ]; then
-              echo "Stopping stale container(s) on port ${NEW_PORT}: $STALE"
-              docker stop $STALE || true
-              docker rm $STALE || true
-            fi
-            # Hard failsafe: ensure the port is actually free
+            [ -n "$STALE" ] && docker stop $STALE && docker rm $STALE || true
             sleep 1
+
             docker run -d \
               --name coil-new \
               --restart unless-stopped \
               -p 127.0.0.1:${NEW_PORT}:3000 \
-              --env-file .env.local \
+              --env-file /opt/coil/.env.local \
               coil-app
 
             # Health check — wait up to 30s
@@ -129,20 +166,18 @@ jobs:
               sleep 1
             done
 
-            # Swap upstream — nginx reload is graceful (in-flight requests finish on old)
+            # Swap upstream — nginx reload is graceful
             sudo sed -i "s|server 127.0.0.1:${ACTIVE_PORT};|server 127.0.0.1:${NEW_PORT};|" /etc/nginx/sites-enabled/coil
             sudo nginx -s reload
 
-            # Kill old container, rename new to canonical name
             docker stop coil || true
             docker rm coil || true
             docker rename coil-new coil
 
             # Ensure cron jobs are set (idempotent)
-            CRON_SECRET=$(grep CRON_SECRET /opt/coil/.env.local | cut -d= -f2)
             (crontab -l 2>/dev/null | grep -v "api/cron/"; \
-              echo "0 20 * * 0 curl -s -X POST https://coil.5am.team/api/cron/weekly-email -H \"Authorization: Bearer $CRON_SECRET\" >> /var/log/coil-cron.log 2>&1"; \
-              echo "0 * * * * curl -s https://coil.5am.team/api/cron/daily-reminder -H \"Authorization: Bearer $CRON_SECRET\" >> /var/log/coil-cron.log 2>&1" \
+              echo "0 20 * * 0 curl -s -X POST https://coil.5am.team/api/cron/weekly-email -H \"Authorization: Bearer ${COIL_APP_CRON_SECRET}\" >> /var/log/coil-cron.log 2>&1"; \
+              echo "0 * * * * curl -s https://coil.5am.team/api/cron/daily-reminder -H \"Authorization: Bearer ${COIL_APP_CRON_SECRET}\" >> /var/log/coil-cron.log 2>&1" \
             ) | crontab -
 
             echo "Deploy complete: $(date -u)"
