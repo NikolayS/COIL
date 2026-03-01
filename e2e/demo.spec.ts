@@ -196,6 +196,7 @@ test.describe("Demo mode — /settings redirect", () => {
 
   test("/login page renders sign-in form", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 10_000 });
+    // Email input has no <label> — use placeholder or type selector
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10_000 });
   });
 });
