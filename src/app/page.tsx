@@ -151,7 +151,7 @@ function migrateWeekData(data: WeekData): WeekData {
     ])
   );
   // Backfill new weekly field
-  const weekly = { biggestWin: "", ...data.weekly };
+  const weekly = { ...data.weekly, biggestWin: data.weekly.biggestWin ?? "" };
   return { ...data, days, weekly };
 }
 
