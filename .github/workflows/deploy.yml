@@ -175,7 +175,8 @@ jobs:
 
             # Blue/green deploy — app uses ports 3000 (blue) and 3002 (green)
             # Port 3001 is reserved for PostgREST/Supabase
-            ACTIVE_PORT=$(grep -oP 'proxy_pass http://(?:127\.0\.0\.1|localhost):\K(3000|3002)' \
+            # Read active port from upstream block: "server 127.0.0.1:PORT;"
+            ACTIVE_PORT=$(grep -oP 'server 127\.0\.0\.1:\K(3000|3002)(?=;)' \
               /etc/nginx/sites-enabled/coil 2>/dev/null | head -1)
             if [ -z "$ACTIVE_PORT" ]; then ACTIVE_PORT=3000; fi
             if [ "$ACTIVE_PORT" = "3000" ]; then NEW_PORT=3002; else NEW_PORT=3000; fi
@@ -213,10 +214,8 @@ jobs:
               exit 1
             fi
 
-            # Swap nginx to the new port (only touch app proxy_pass lines)
-            sudo sed -i "s|proxy_pass http://127.0.0.1:${ACTIVE_PORT};|proxy_pass http://127.0.0.1:${NEW_PORT};|g" \
-              /etc/nginx/sites-enabled/coil
-            sudo sed -i "s|proxy_pass http://localhost:${ACTIVE_PORT};|proxy_pass http://127.0.0.1:${NEW_PORT};|g" \
+            # Swap nginx upstream block to new port (single replacement point)
+            sudo sed -i "s|server 127.0.0.1:${ACTIVE_PORT};|server 127.0.0.1:${NEW_PORT};|g" \
               /etc/nginx/sites-enabled/coil
             sudo nginx -t && sudo nginx -s reload
 
