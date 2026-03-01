@@ -17,6 +17,8 @@ interface DayData {
   territories: Record<TerritoryKey, boolean>;
   wolf: WolfModes;
   drinks: number;
+  gratitude: string;
+  wins: string;
   journal: string;
   reflection: string;
 }
@@ -27,6 +29,7 @@ interface WeekData {
   weekly: {
     wins: string;
     gratitude: string;
+    biggestWin: string;
     lessons: string;
     focusAchieved: string;
     focusNext: string;
@@ -92,6 +95,8 @@ function emptyDayData(): DayData {
     territories: { self: false, health: false, relationships: false, wealth: false, business: false },
     wolf: [],
     drinks: 0,
+    gratitude: "",
+    wins: "",
     journal: "",
     reflection: "",
   };
@@ -102,7 +107,7 @@ function emptyWeekData(monday: Date): WeekData {
     weekOf: monday.toISOString(),
     days: Object.fromEntries(DAYS.map((d) => [d, emptyDayData()])),
     weekly: {
-      wins: "", gratitude: "", lessons: "", focusAchieved: "",
+      wins: "", gratitude: "", biggestWin: "", lessons: "", focusAchieved: "",
       focusNext: "", stretchNext: "", onTrack: "", cupOverflowing: "", improve: "",
     },
   };
@@ -133,14 +138,21 @@ const STORAGE_KEY = "coil_current_week";
 const ARCHIVE_KEY = "coil_archived_weeks";
 
 function migrateWeekData(data: WeekData): WeekData {
-  // Migrate wolf from old single string to array
+  // Migrate wolf from old single string to array; backfill new day fields
   const days = Object.fromEntries(
     Object.entries(data.days).map(([k, d]) => [
       k,
-      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [] },
+      {
+        ...d,
+        wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [],
+        gratitude: d.gratitude ?? "",
+        wins: d.wins ?? "",
+      },
     ])
   );
-  return { ...data, days };
+  // Backfill new weekly field
+  const weekly = { biggestWin: "", ...data.weekly };
+  return { ...data, days, weekly };
 }
 
 // Demo-only helpers
@@ -512,10 +524,24 @@ function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) 
         onChange={(drinks) => updateDay({ drinks })}
       />
 
+      {/* Gratitude & Wins */}
+      <JournalField
+        label="Gratitude"
+        placeholder="What are you grateful for today?"
+        value={dayData.gratitude}
+        onChange={(gratitude) => updateDay({ gratitude })}
+      />
+      <JournalField
+        label="Wins"
+        placeholder="What did you win today?"
+        value={dayData.wins}
+        onChange={(wins) => updateDay({ wins })}
+      />
+
       {/* Journal */}
       <JournalField
         label="Journal Notes"
-        placeholder="Wins, challenges, what happened today..."
+        placeholder="Challenges, what happened today..."
         value={dayData.journal}
         onChange={(journal) => updateDay({ journal })}
       />
@@ -537,7 +563,8 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
   };
 
   const reflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
-    { key: "wins", label: "Wins", placeholder: "One big win for this week..." },
+    { key: "biggestWin", label: "Biggest Win of the Week", placeholder: "The one win that stands above the rest..." },
+    { key: "wins", label: "Other Wins", placeholder: "More wins from this week..." },
     { key: "gratitude", label: "Gratitude", placeholder: "Who or what am I grateful for?" },
     { key: "lessons", label: "Lessons / Challenges", placeholder: "What did I learn? What did I try and fail at?" },
     { key: "focusAchieved", label: "Did I achieve my focus & stretch from last week?", placeholder: "If not, why?" },
@@ -824,7 +851,7 @@ export default function CoilApp() {
       const hasContent = calcScore(weekData) > 0 ||
         Object.values(weekData.weekly).some(v => v.trim() !== "") ||
         Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.drinks > 0
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.drinks > 0 || d.gratitude.trim() !== "" || d.wins.trim() !== ""
         );
       if (hasContent) {
         const newArchive: ArchivedWeek[] = [

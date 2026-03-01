@@ -6,6 +6,8 @@ interface DayData {
   territories: Record<TerritoryKey, boolean>;
   wolf: string[];
   drinks: number;
+  gratitude: string;
+  wins: string;
   journal: string;
   reflection: string;
 }
@@ -16,6 +18,7 @@ export interface WeekData {
   weekly: {
     wins: string;
     gratitude: string;
+    biggestWin: string;
     lessons: string;
     focusAchieved: string;
     focusNext: string;
@@ -94,13 +97,16 @@ export function generateReport(data: WeekData): string {
     if (!d) continue;
     const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
     lines.push(`### ${DAY_LABELS[day]}${wolf}`);
+    if (d.gratitude) lines.push(`*Grateful for: ${d.gratitude}*`);
+    if (d.wins) lines.push(`*Wins: ${d.wins}*`);
     if (d.journal) lines.push(d.journal);
     if (d.reflection) lines.push(`*Better: ${d.reflection}*`);
     lines.push(``);
   }
   lines.push(`## Weekly Reflection`);
   const w = data.weekly;
-  if (w.wins) lines.push(`**Wins:** ${w.wins}`);
+  if (w.biggestWin) lines.push(`**Biggest Win:** ${w.biggestWin}`);
+  if (w.wins) lines.push(`**Other Wins:** ${w.wins}`);
   if (w.gratitude) lines.push(`**Gratitude:** ${w.gratitude}`);
   if (w.lessons) lines.push(`**Lessons:** ${w.lessons}`);
   if (w.focusAchieved) lines.push(`**Focus achieved:** ${w.focusAchieved}`);
