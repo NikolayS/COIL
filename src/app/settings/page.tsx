@@ -215,20 +215,24 @@ function SettingsInner() {
               <>
                 {/* Day selector */}
                 <div>
-                  <p className="text-xs text-[--text-dim] mb-2">Delivery day</p>
+                  <p className="text-xs text-[--text-dim] mb-2">Week ends on</p>
                   <div className="grid grid-cols-2 gap-1.5">
-                    {(["saturday", "sunday"] as const).map((day) => (
+                    {([
+                      { value: "saturday", label: "Saturday", delivers: "Sun" },
+                      { value: "sunday", label: "Sunday", delivers: "Mon" },
+                    ] as const).map(({ value, label, delivers }) => (
                       <button
-                        key={day}
-                        onClick={() => setEmailDay(day)}
-                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95"
+                        key={value}
+                        onClick={() => setEmailDay(value)}
+                        className="py-2.5 rounded-lg text-xs font-mono border transition-all duration-200 active:scale-95 flex flex-col items-center gap-0.5"
                         style={{
-                          borderColor: emailDay === day ? "var(--gold)" : "var(--border)",
-                          backgroundColor: emailDay === day ? "var(--gold-bg)" : "transparent",
-                          color: emailDay === day ? "var(--gold)" : "var(--text-muted)",
+                          borderColor: emailDay === value ? "var(--gold)" : "var(--border)",
+                          backgroundColor: emailDay === value ? "var(--gold-bg)" : "transparent",
+                          color: emailDay === value ? "var(--gold)" : "var(--text-muted)",
                         }}
                       >
-                        {day.charAt(0).toUpperCase() + day.slice(1)}
+                        <span>{label}</span>
+                        <span style={{ fontSize: "10px", opacity: 0.7 }}>delivers {delivers}</span>
                       </button>
                     ))}
                   </div>
