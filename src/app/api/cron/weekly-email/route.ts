@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   // Fetch all users with weekly email enabled
   const { data: settings, error: settingsError } = await supabase
     .from("settings")
-    .select("user_id, weekly_email_hour, weekly_email_day, report_email, timezone, email_pdf")
+    .select("user_id, weekly_email_hour, week_start, report_email, timezone, email_pdf")
     .eq("weekly_email_enabled", true);
 
   if (settingsError) {
@@ -64,12 +64,13 @@ export async function POST(request: NextRequest) {
     // Use report_email if set, otherwise fall back to auth email
     const email = (setting.report_email as string | null) || authEmail;
 
-    // Week ends Saturday → deliver Sunday (0); week ends Sunday → deliver Monday (1)
-    const prefDay = (setting.weekly_email_day as string | null) ?? "sunday";
-    const sendOnDay = prefDay === "saturday" ? 0 : 1; // day after week ends
+    // week_start=monday → week ends Sunday → deliver Monday (1)
+    // week_start=sunday → week ends Saturday → deliver Sunday (0)
+    const ws = (setting.week_start as string | null) ?? "monday";
+    const sendOnDay = ws === "monday" ? 1 : 0;
     if (nowDay !== sendOnDay) continue;
 
-    // The completed week ended yesterday — get that week's Monday
+    // The completed week ended yesterday — get that week's start Monday
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const monday = getMondayOfWeek(yesterday).toISOString().slice(0, 10);
 
