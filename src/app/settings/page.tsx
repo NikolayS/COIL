@@ -237,7 +237,7 @@ function SettingsInner() {
                 {/* Hour selector — full 24h */}
                 <div>
                   <p className="text-xs text-[--text-dim] mb-2">Delivery time</p>
-                  <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-4 gap-1.5">
                     {HOUR_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
@@ -396,7 +396,7 @@ function SettingsInner() {
                 </button>
               </div>
               {reminder1Enabled && (
-                <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                <div className="grid grid-cols-4 gap-1.5">
                   {HOUR_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -433,7 +433,7 @@ function SettingsInner() {
                 </button>
               </div>
               {reminder2Enabled && (
-                <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                <div className="grid grid-cols-4 gap-1.5">
                   {HOUR_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
