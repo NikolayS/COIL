@@ -98,7 +98,7 @@ export function generatePlainReport(data: WeekData): string {
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
     dayParts.push(parts.join(" | "));
   }
-  if (dayParts.length) allParts.push(dayParts.join(" // "));
+  if (dayParts.length) allParts.push(dayParts.join("  "));
 
   // Weekly reflection
   const w = data.weekly;
@@ -160,7 +160,7 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
     if (d.wins) { plainParts.push(`Wins: ${d.wins}`); htmlFieldLines.push(`<strong>Wins:</strong> ${esc(d.wins)}`); }
     if (d.journal) { plainParts.push(d.journal); htmlFieldLines.push(esc(d.journal)); }
     if (d.reflection) { plainParts.push(`Better: ${d.reflection}`); htmlFieldLines.push(`<strong>Better:</strong> ${esc(d.reflection)}`); }
-    lines.push(plainParts.join(" | "));
+    lines.push(plainParts.join("  "));
     const dayHeading = `<h3>${esc(DAY_LABELS[day])}${esc(wolf)}</h3>`;
     dailyHtmlLines.push(dayHeading + (htmlFieldLines.length ? htmlFieldLines.join("<br>") : ""));
   }
