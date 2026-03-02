@@ -693,7 +693,7 @@ function ExportTab({
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[--text-muted] leading-relaxed mb-4">
-          Copy this week's report. Use AI Chat format for Claude/ChatGPT, or Plain Text for TPM and other apps.
+          Week of {new Date(data.weekOf).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}. Use AI Chat format for Claude/ChatGPT, or Plain Text for TPM and other apps.
         </p>
         <button
           onClick={handleCopy}
