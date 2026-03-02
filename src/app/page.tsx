@@ -445,9 +445,10 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) => void }) {
+function DailyTab({ data, onChange, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; weekOffset?: number }) {
   const todayKey = getTodayKey();
-  const [activeDay, setActiveDay] = useState(todayKey);
+  // When viewing a past week, default to Sunday (last day); otherwise today
+  const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
 
   const dayData = data.days[activeDay] ?? emptyDayData();
   const weeklyDrinks = calcWeekDrinks(data);
@@ -1082,7 +1083,7 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "daily" && (
-            <DailyTab data={weekData} onChange={setWeekData} />
+            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} />
           )}
           {activeTab === "weekly" && (
             <WeeklyTab data={weekData} onChange={setWeekData} />
