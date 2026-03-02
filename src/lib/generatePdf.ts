@@ -241,7 +241,7 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const hasContent = d.journal || d.reflection || (d.wolf && d.wolf.length > 0);
+    const hasContent = d.journal || d.reflection || d.gratitude || d.wins || (d.wolf && d.wolf.length > 0);
     if (!hasContent) continue;
 
     checkY(40);
@@ -253,6 +253,28 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
     }
     y -= 15;
 
+    if (d.gratitude) {
+      checkY(13);
+      drawText("Grateful:", MARGIN + 10, y, { bold: true, size: 9, color: COLORS.mid });
+      y -= 12;
+      const lines = wrapText(d.gratitude, COL_W - 12, 9);
+      for (const line of lines) {
+        checkY(12);
+        drawText(line, MARGIN + 10, y, { size: 9 });
+        y -= 12;
+      }
+    }
+    if (d.wins) {
+      checkY(13);
+      drawText("Wins:", MARGIN + 10, y, { bold: true, size: 9, color: COLORS.mid });
+      y -= 12;
+      const lines = wrapText(d.wins, COL_W - 12, 9);
+      for (const line of lines) {
+        checkY(12);
+        drawText(line, MARGIN + 10, y, { size: 9 });
+        y -= 12;
+      }
+    }
     if (d.journal) {
       const lines = wrapText(d.journal, COL_W - 12, 10);
       for (const line of lines) {
@@ -282,6 +304,7 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
 
   const w = data.weekly;
   const reflFields: [string, string | undefined][] = [
+    ["Biggest Win", w.biggestWin],
     ["Wins", w.wins],
     ["Gratitude", w.gratitude],
     ["Lessons", w.lessons],
