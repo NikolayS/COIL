@@ -146,19 +146,23 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   if (totalDrinks > 0) lines.push(`Drinks: ${totalDrinks}`);
 
   // Daily entries — one line per day
+  const dailyHtmlLines: string[] = []; // separate html for day entries (uses <h3>)
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
     const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
     if (!hasContent) continue;
-    const parts: string[] = [];
-    const wolf = d.wolf?.length ? ` (Wolf: ${d.wolf.join(", ")})` : "";
-    parts.push(`${DAY_LABELS[day]}${wolf}`);
-    if (d.gratitude) parts.push(`Grateful: ${d.gratitude}`);
-    if (d.wins) parts.push(`Wins: ${d.wins}`);
-    if (d.journal) parts.push(d.journal);
-    if (d.reflection) parts.push(`Better: ${d.reflection}`);
-    lines.push(parts.join(" | "));
+    const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
+    const plainParts: string[] = [];
+    const htmlFieldLines: string[] = [];
+    plainParts.push(`${DAY_LABELS[day]}${wolf}`);
+    if (d.gratitude) { plainParts.push(`Grateful: ${d.gratitude}`); htmlFieldLines.push(`<strong>Grateful:</strong> ${esc(d.gratitude)}`); }
+    if (d.wins) { plainParts.push(`Wins: ${d.wins}`); htmlFieldLines.push(`<strong>Wins:</strong> ${esc(d.wins)}`); }
+    if (d.journal) { plainParts.push(d.journal); htmlFieldLines.push(esc(d.journal)); }
+    if (d.reflection) { plainParts.push(`Better: ${d.reflection}`); htmlFieldLines.push(`<strong>Better:</strong> ${esc(d.reflection)}`); }
+    lines.push(plainParts.join(" | "));
+    const dayHeading = `<h3>${esc(DAY_LABELS[day])}${esc(wolf)}</h3>`;
+    dailyHtmlLines.push(dayHeading + (htmlFieldLines.length ? htmlFieldLines.join("<br>") : ""));
   }
 
   // Weekly reflection — one line
@@ -176,18 +180,16 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   if (w.improve) reflParts.push(`Improve: ${w.improve}`);
   if (reflParts.length) lines.push(reflParts.join(" | "));
 
-  // Section boundaries: header+territories, daily entries, weekly reflection
-  // Each section = one <p>, lines within = <br> (Shift+Enter in Tiptap)
-  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + 1; // header + terr rows + optional drinks
-  const numWeeklyLines = reflParts.length > 0 ? 1 : 0;
+  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + 1;
   const headerLines = lines.slice(0, numTerrLines);
-  const dailyLines = lines.slice(numTerrLines, lines.length - numWeeklyLines);
-  const weeklyLines = numWeeklyLines > 0 ? lines.slice(lines.length - 1) : [];
 
   const plain = lines.join("\n");
   const htmlParts: string[] = [`<p>${headerLines.map(boldKey).join("<br>")}</p>`];
-  if (dailyLines.length) htmlParts.push(`<p>${dailyLines.map(boldKey).join("<br>")}</p>`);
-  if (weeklyLines.length) htmlParts.push(`<p>${weeklyLines.map(boldKey).join("<br>")}</p>`);
+  if (dailyHtmlLines.length) htmlParts.push(dailyHtmlLines.join(""));
+  if (reflParts.length) {
+    const weeklyHtml = `<h2>Weekly Reflection</h2>` + reflParts.map(p => `<p>${boldKey(p)}</p>`).join("");
+    htmlParts.push(weeklyHtml);
+  }
   const html = htmlParts.join("");
   return { plain, html };
 }
