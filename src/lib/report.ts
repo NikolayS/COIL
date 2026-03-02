@@ -129,15 +129,16 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   const score = calcScore(data);
   const lines: string[] = [];
 
-  // Header + territories
-  const terrParts = TERRITORIES.map(t => {
-    const s = calcTerritoryScore(data, t.key);
-    const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join("");
-    return `${t.label} ${dots} ${s}/7`;
-  });
+  // Header line
+  lines.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE}`);
+  // Territory lines — one per territory
   const totalDrinks = calcWeekDrinks(data);
-  const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  lines.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}`);
+  for (const t of TERRITORIES) {
+    const s = calcTerritoryScore(data, t.key);
+    const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join(" ");
+    lines.push(`${t.label.padEnd(14)} ${dots}  ${s}/7`);
+  }
+  if (totalDrinks > 0) lines.push(`Drinks: ${totalDrinks}`);
 
   // Daily entries — one line per day
   for (const day of DAYS) {
@@ -170,17 +171,19 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   if (w.improve) reflParts.push(`Improve: ${w.improve}`);
   if (reflParts.length) lines.push(reflParts.join(" | "));
 
+  // Section boundaries: header+territories, daily entries, weekly reflection
+  // Each section = one <p>, lines within = <br> (Shift+Enter in Tiptap)
+  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + 1; // header + terr rows + optional drinks
+  const numWeeklyLines = reflParts.length > 0 ? 1 : 0;
+  const headerLines = lines.slice(0, numTerrLines);
+  const dailyLines = lines.slice(numTerrLines, lines.length - numWeeklyLines);
+  const weeklyLines = numWeeklyLines > 0 ? lines.slice(lines.length - 1) : [];
+
   const plain = lines.join("\n");
-  // First line = header, last line = weekly reflection, middle = daily entries
-  // Wrap each section in <p> so Tiptap inserts an empty line between sections
-  // Within daily section, days are separated by <br> (soft line break)
-  const headerHtml = esc(lines[0]);
-  const dailyLines = lines.slice(1, lines.length - (reflParts.length > 0 ? 1 : 0));
-  const weeklyHtml = reflParts.length > 0 ? esc(lines[lines.length - 1]) : null;
-  const parts: string[] = [`<p>${headerHtml}</p>`];
-  if (dailyLines.length) parts.push(`<p>${dailyLines.map(esc).join("<br>")}</p>`);
-  if (weeklyHtml) parts.push(`<p>${weeklyHtml}</p>`);
-  const html = parts.join("");
+  const htmlParts: string[] = [`<p>${headerLines.map(esc).join("<br>")}</p>`];
+  if (dailyLines.length) htmlParts.push(`<p>${dailyLines.map(esc).join("<br>")}</p>`);
+  if (weeklyLines.length) htmlParts.push(`<p>${weeklyLines.map(esc).join("<br>")}</p>`);
+  const html = htmlParts.join("");
   return { plain, html };
 }
 
