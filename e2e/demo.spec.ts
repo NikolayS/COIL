@@ -152,7 +152,7 @@ test.describe("Demo mode — home page", () => {
 
   test("tab navigation works — Export tab shows Copy Report button", async ({ page }) => {
     await page.getByRole("button", { name: /export/i }).click();
-    await expect(page.getByRole("button", { name: /copy full coil report/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /copy for ai chat/i })).toBeVisible();
   });
 
   test("Export tab: SQL Dump button is NOT visible in demo mode (no user)", async ({ page }) => {
