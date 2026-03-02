@@ -68,43 +68,52 @@ function calcWeekDrinks(data: WeekData): number {
 export function generatePlainReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
-  // Each element becomes one paragraph in TPM (separated by blank line = \n\n)
+  // TPM renders \n as a paragraph gap. Use \n only between top-level sections.
+  // Within each section, join with " | " so everything stays in one paragraph.
   const paragraphs: string[] = [];
 
-  paragraphs.push(`COIL — Week of ${formatWeekOf(weekOf)}, Score: ${score}/${TOTAL_POSSIBLE}`);
+  // Header + territory scores in one paragraph
+  const terrParts = TERRITORIES.map(t => {
+    const s = calcTerritoryScore(data, t.key);
+    const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join("");
+    return `${t.label} ${dots} ${s}/7`;
+  });
+  const totalDrinks = calcWeekDrinks(data);
+  const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
+  paragraphs.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}`);
 
-  // Daily entries — one paragraph per day with content
+  // Daily entries — one paragraph per day, fields joined with " | "
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
     const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
     if (!hasContent) continue;
-    const lines: string[] = [];
+    const parts: string[] = [];
     const wolf = d.wolf?.length ? ` (Wolf: ${d.wolf.join(", ")})` : "";
-    lines.push(`${DAY_LABELS[day]}${wolf}`);
-    if (d.gratitude) lines.push(`Grateful: ${d.gratitude}`);
-    if (d.wins) lines.push(`Wins: ${d.wins}`);
-    if (d.journal) lines.push(d.journal);
-    if (d.reflection) lines.push(`Better: ${d.reflection}`);
-    paragraphs.push(lines.join("\n"));
+    parts.push(`${DAY_LABELS[day]}${wolf}`);
+    if (d.gratitude) parts.push(`Grateful: ${d.gratitude}`);
+    if (d.wins) parts.push(`Wins: ${d.wins}`);
+    if (d.journal) parts.push(d.journal);
+    if (d.reflection) parts.push(`Better: ${d.reflection}`);
+    paragraphs.push(parts.join(" | "));
   }
 
-  // Weekly reflection — one paragraph, each field on its own line
+  // Weekly reflection — one paragraph
   const w = data.weekly;
-  const reflLines: string[] = [];
-  if (w.biggestWin) reflLines.push(`Biggest Win: ${w.biggestWin}`);
-  if (w.wins) reflLines.push(`Other Wins: ${w.wins}`);
-  if (w.gratitude) reflLines.push(`Gratitude: ${w.gratitude}`);
-  if (w.lessons) reflLines.push(`Lessons: ${w.lessons}`);
-  if (w.focusAchieved) reflLines.push(`Focus achieved: ${w.focusAchieved}`);
-  if (w.focusNext) reflLines.push(`Focus next week: ${w.focusNext}`);
-  if (w.stretchNext) reflLines.push(`Stretch: ${w.stretchNext}`);
-  if (w.onTrack) reflLines.push(`On track: ${w.onTrack}`);
-  if (w.cupOverflowing) reflLines.push(`Cup overflowing: ${w.cupOverflowing}`);
-  if (w.improve) reflLines.push(`Improve: ${w.improve}`);
-  if (reflLines.length) paragraphs.push(reflLines.join("\n"));
+  const reflParts: string[] = [];
+  if (w.biggestWin) reflParts.push(`Biggest Win: ${w.biggestWin}`);
+  if (w.wins) reflParts.push(`Other Wins: ${w.wins}`);
+  if (w.gratitude) reflParts.push(`Gratitude: ${w.gratitude}`);
+  if (w.lessons) reflParts.push(`Lessons: ${w.lessons}`);
+  if (w.focusAchieved) reflParts.push(`Focus achieved: ${w.focusAchieved}`);
+  if (w.focusNext) reflParts.push(`Focus next week: ${w.focusNext}`);
+  if (w.stretchNext) reflParts.push(`Stretch: ${w.stretchNext}`);
+  if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
+  if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
+  if (w.improve) reflParts.push(`Improve: ${w.improve}`);
+  if (reflParts.length) paragraphs.push(reflParts.join(" | "));
 
-  return paragraphs.join("\n\n");
+  return paragraphs.join("\n");
 }
 
 export function generateReport(data: WeekData): string {
