@@ -802,6 +802,7 @@ export default function CoilApp() {
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
   const weekOffsetRef = useRef(0); // mirror for use in stale closures
+  const weekOffsetInitialized = useRef(false); // skip initial nav effect run
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
@@ -873,7 +874,7 @@ export default function CoilApp() {
 
   // Reload week data when offset changes (week navigation)
   useEffect(() => {
-    if (weekOffset === 0) return; // initial load handled above
+    if (!weekOffsetInitialized.current) { weekOffsetInitialized.current = true; return; }
     if (!user) return;
     setWeekData(null);
     fetchCurrentFromSupabase(user.id, weekOffset, weekStart).then((w) => {
