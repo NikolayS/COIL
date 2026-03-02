@@ -48,6 +48,23 @@ function formatWeekOf(date: Date): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+const WEEKLY_FIELDS: [keyof WeekData["weekly"], string][] = [
+  ["biggestWin",    "Biggest Win"],
+  ["wins",          "Other Wins"],
+  ["gratitude",     "Gratitude"],
+  ["lessons",       "Lessons"],
+  ["focusAchieved", "Focus achieved"],
+  ["focusNext",     "Focus next week"],
+  ["stretchNext",   "Stretch"],
+  ["onTrack",       "On track"],
+  ["cupOverflowing","Cup overflowing"],
+  ["improve",       "Improve"],
+];
+
+function weeklyLines(w: WeekData["weekly"]): string[] {
+  return WEEKLY_FIELDS.map(([key, label]) => `${label}: ${w[key] || "—"}`);
+}
+
 function calcScore(data: WeekData): number {
   let score = 0;
   for (const day of DAYS) {
@@ -101,19 +118,7 @@ export function generatePlainReport(data: WeekData): string {
   if (dayParts.length) allParts.push(dayParts.join("\n"));
 
   // Weekly reflection
-  const w = data.weekly;
-  const reflParts: string[] = [];
-  if (w.biggestWin) reflParts.push(`Biggest Win: ${w.biggestWin}`);
-  if (w.wins) reflParts.push(`Other Wins: ${w.wins}`);
-  if (w.gratitude) reflParts.push(`Gratitude: ${w.gratitude}`);
-  if (w.lessons) reflParts.push(`Lessons: ${w.lessons}`);
-  if (w.focusAchieved) reflParts.push(`Focus achieved: ${w.focusAchieved}`);
-  if (w.focusNext) reflParts.push(`Focus next week: ${w.focusNext}`);
-  if (w.stretchNext) reflParts.push(`Stretch: ${w.stretchNext}`);
-  if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
-  if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
-  if (w.improve) reflParts.push(`Improve: ${w.improve}`);
-  if (reflParts.length) allParts.push(reflParts.join("\n"));
+  allParts.push(weeklyLines(data.weekly).join("\n"));
 
   return allParts.join("\n");
 }
@@ -165,20 +170,9 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
     dailyHtmlLines.push(dayHeading + (htmlFieldLines.length ? htmlFieldLines.join("<br>") : ""));
   }
 
-  // Weekly reflection — one line
-  const w = data.weekly;
-  const reflParts: string[] = [];
-  if (w.biggestWin) reflParts.push(`Biggest Win: ${w.biggestWin}`);
-  if (w.wins) reflParts.push(`Other Wins: ${w.wins}`);
-  if (w.gratitude) reflParts.push(`Gratitude: ${w.gratitude}`);
-  if (w.lessons) reflParts.push(`Lessons: ${w.lessons}`);
-  if (w.focusAchieved) reflParts.push(`Focus achieved: ${w.focusAchieved}`);
-  if (w.focusNext) reflParts.push(`Focus next week: ${w.focusNext}`);
-  if (w.stretchNext) reflParts.push(`Stretch: ${w.stretchNext}`);
-  if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
-  if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
-  if (w.improve) reflParts.push(`Improve: ${w.improve}`);
-  if (reflParts.length) lines.push(reflParts.join(" | "));
+  // Weekly reflection
+  const reflParts = weeklyLines(data.weekly);
+  lines.push(reflParts.join("\n"));
 
   const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + 1;
   const headerLines = lines.slice(0, numTerrLines);
@@ -188,6 +182,7 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   if (dailyHtmlLines.length) htmlParts.push(dailyHtmlLines.join(""));
   if (reflParts.length) {
     const weeklyHtml = `<h2>Weekly Reflection</h2>` + reflParts.map(p => `<p>${boldKey(p)}</p>`).join("");
+
     htmlParts.push(weeklyHtml);
   }
   const html = htmlParts.join("");
@@ -246,16 +241,11 @@ export function generateEmailHtml(data: WeekData): string {
     return `<div style="margin-bottom:12px"><div style="${style.h3}">${DAY_LABELS[day]}${wolf}</div>${fields}</div>`;
   }).join("");
 
-  // Weekly reflection
-  const reflFields: [string, string][] = [
-    ["Biggest Win", w.biggestWin], ["Other Wins", w.wins], ["Gratitude", w.gratitude],
-    ["Lessons", w.lessons], ["Focus achieved", w.focusAchieved], ["Focus next week", w.focusNext],
-    ["Stretch", w.stretchNext], ["On track", w.onTrack], ["Cup overflowing", w.cupOverflowing],
-    ["Improve", w.improve],
-  ];
-  const reflHtml = reflFields.filter(([, v]) => v).map(([k, v]) =>
-    `<div style="margin-bottom:6px"><span style="${style.label}">${esc(k)}:</span> <span style="${style.value}">${esc(v)}</span></div>`
-  ).join("");
+  // Weekly reflection — always show all fields
+  const reflHtml = WEEKLY_FIELDS.map(([key, label]) => {
+    const v = w[key] || "—";
+    return `<div style="margin-bottom:6px"><span style="${style.label}">${esc(label)}:</span> <span style="${style.value}">${esc(v)}</span></div>`;
+  }).join("");
 
   return `<div style="${style.body}">
   <h1 style="${style.h1}">COIL</h1>
@@ -316,16 +306,6 @@ export function generateReport(data: WeekData): string {
     lines.push(``);
   }
   lines.push(`## Weekly Reflection`);
-  const w = data.weekly;
-  if (w.biggestWin) lines.push(`Biggest Win: ${w.biggestWin}`);
-  if (w.wins) lines.push(`Other Wins: ${w.wins}`);
-  if (w.gratitude) lines.push(`Gratitude: ${w.gratitude}`);
-  if (w.lessons) lines.push(`Lessons: ${w.lessons}`);
-  if (w.focusAchieved) lines.push(`Focus achieved: ${w.focusAchieved}`);
-  if (w.focusNext) lines.push(`Focus next week: ${w.focusNext}`);
-  if (w.stretchNext) lines.push(`Stretch next week: ${w.stretchNext}`);
-  if (w.onTrack) lines.push(`On track: ${w.onTrack}`);
-  if (w.cupOverflowing) lines.push(`Cup overflowing: ${w.cupOverflowing}`);
-  if (w.improve) lines.push(`Areas to improve: ${w.improve}`);
+  lines.push(...weeklyLines(data.weekly));
   return lines.join("\n");
 }
