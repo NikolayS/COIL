@@ -821,16 +821,21 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function CoilApp() {
-  const [activeTab, setActiveTab] = useState<TabKey>("daily");
+  // Read initial state from URL params
+  const initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const initTab = (initParams.get("tab") as TabKey) ?? "daily";
+  const initOffset = parseInt(initParams.get("week") ?? "0", 10);
+
+  const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
-  const weekOffsetRef = useRef(0); // mirror for use in stale closures
-  const weekOffsetInitialized = useRef(false); // skip initial nav effect run
+  const [weekOffset, setWeekOffset] = useState(initOffset); // 0 = current week, -1 = last week, etc.
+  const weekOffsetRef = useRef(initOffset); // mirror for use in stale closures
+  const weekOffsetInitialized = useRef(initOffset !== 0); // skip initial nav effect run (auth effect handles it)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
@@ -886,7 +891,7 @@ export default function CoilApp() {
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
         const [remoteWeek, remoteArchive] = await Promise.all([
-          fetchCurrentFromSupabase(user.id, 0, ws),
+          fetchCurrentFromSupabase(user.id, initOffset, ws),
           fetchArchiveFromSupabase(user.id),
         ]);
         setWeekData(remoteWeek ?? emptyWeekData(getWeekStart(new Date(), ws)));
@@ -899,6 +904,16 @@ export default function CoilApp() {
       }
     });
   }, []);
+
+  // Sync tab + weekOffset to URL params (no page reload, preserves back/forward)
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeTab !== "daily") params.set("tab", activeTab);
+    if (weekOffset !== 0) params.set("week", String(weekOffset));
+    const qs = params.toString();
+    const newUrl = qs ? `?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", newUrl);
+  }, [activeTab, weekOffset]);
 
   // Reload week data when offset changes (week navigation)
   useEffect(() => {
