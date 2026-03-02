@@ -678,7 +678,24 @@ function ExportTab({
   };
 
   const handleCopyPlain = async () => {
-    await navigator.clipboard.writeText(generatePlainReport(data));
+    const plain = generatePlainReport(data);
+    // Write both plain text and HTML — apps like TPM that accept rich paste
+    // will use <br> as soft line breaks (Shift+Enter) instead of paragraph breaks
+    const html = plain
+      .split("\n")
+      .map(line => line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))
+      .join("<br>");
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+          "text/html": new Blob([`<span>${html}</span>`], { type: "text/html" }),
+        }),
+      ]);
+    } catch {
+      // Fallback for browsers that don't support ClipboardItem
+      await navigator.clipboard.writeText(plain);
+    }
     setCopiedPlain(true);
     setTimeout(() => setCopiedPlain(false), 2000);
   };
