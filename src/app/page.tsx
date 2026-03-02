@@ -801,6 +801,7 @@ export default function CoilApp() {
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
+  const weekOffsetRef = useRef(0); // mirror for use in stale closures
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
@@ -890,7 +891,7 @@ export default function CoilApp() {
   // Auto-archive on week boundary (runs once data is loaded, only when viewing current week)
   useEffect(() => {
     if (!weekData) return;
-    if (weekOffset !== 0) return; // don't auto-archive when browsing past weeks
+    if (weekOffsetRef.current !== 0) return; // don't auto-archive when browsing past weeks
     const currentMonday = getWeekStart(new Date(), weekStart).toISOString();
     if (weekData.weekOf !== currentMonday) {
       const hasContent = calcScore(weekData) > 0 ||
@@ -1049,7 +1050,7 @@ export default function CoilApp() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setWeekOffset(o => o - 1)}
+                onClick={() => { const n = weekOffset - 1; weekOffsetRef.current = n; setWeekOffset(n); }}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
                 title="Previous week"
@@ -1062,7 +1063,7 @@ export default function CoilApp() {
                 <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
               </div>
               <button
-                onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
+                onClick={() => { const n = Math.min(0, weekOffset + 1); weekOffsetRef.current = n; setWeekOffset(n); }}
                 disabled={weekOffset === 0}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
