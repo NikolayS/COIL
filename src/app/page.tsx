@@ -578,7 +578,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   );
 }
 
-function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData) => void }) {
+function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; onArchive: () => void; onReset: () => void }) {
   const weeklyDrinks = calcWeekDrinks(data);
 
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
@@ -635,6 +635,27 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
           onChange={(v) => updateWeekly({ [key]: v })}
         />
       ))}
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={onArchive}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
+          style={{borderColor:"var(--self-border)", color:"var(--self)", backgroundColor:"transparent"}}
+          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--self-bg)")}
+          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
+        >
+          <Archive size={14} />
+          Archive & New Week
+        </button>
+        <button
+          onClick={onReset}
+          className="px-5 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
+          style={{borderColor:"var(--health-border)", color:"var(--health)", backgroundColor:"transparent"}}
+          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--health-bg)")}
+          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
+        >
+          Reset
+        </button>
+      </div>
     </div>
   );
 }
@@ -642,13 +663,9 @@ function WeeklyTab({ data, onChange }: { data: WeekData; onChange: (d: WeekData)
 function ExportTab({
   data,
   user,
-  onArchive,
-  onReset,
 }: {
   data: WeekData;
   user: User | null;
-  onArchive: () => void;
-  onReset: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedPlain, setCopiedPlain] = useState(false);
@@ -676,7 +693,7 @@ function ExportTab({
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[--text-muted] leading-relaxed mb-4">
-          Copy your full COIL report as formatted text. Paste it into a chat for AI-guided reflection, or save it for your records.
+          Copy this week's report. Use AI Chat format for Claude/ChatGPT, or Plain Text for TPM and other apps.
         </p>
         <button
           onClick={handleCopy}
@@ -701,31 +718,9 @@ function ExportTab({
             style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
           >
             <Download size={16} />
-            Download SQL Dump
+            Download SQL Dump (all weeks)
           </button>
         )}
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={onArchive}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
-          style={{borderColor:"var(--self-border)", color:"var(--self)", backgroundColor:"transparent"}}
-          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--self-bg)")}
-          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
-        >
-          <Archive size={14} />
-          Archive & New Week
-        </button>
-        <button
-          onClick={onReset}
-          className="px-5 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
-          style={{borderColor:"var(--health-border)", color:"var(--health)", backgroundColor:"transparent"}}
-          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--health-bg)")}
-          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
-        >
-          Reset
-        </button>
       </div>
 
       {/* Preview */}
@@ -744,7 +739,7 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-[--text-dim] text-sm">No archived weeks yet.</p>
         <p className="text-[--text-faint] text-xs mt-2">
-          When you finish a week, go to Export → "Archive & New Week" to save it here.
+          When you finish a week, go to Weekly → "Archive & New Week" to save it here.
         </p>
       </div>
     );
@@ -1137,10 +1132,10 @@ export default function CoilApp() {
             <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "weekly" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} />
+            <WeeklyTab data={weekData} onChange={setWeekData} onArchive={handleArchive} onReset={handleReset} />
           )}
           {activeTab === "export" && (
-            <ExportTab data={weekData} user={user} onArchive={handleArchive} onReset={handleReset} />
+            <ExportTab data={weekData} user={user} />
           )}
           {activeTab === "past" && (
             <PastWeeksTab archive={archive} />
