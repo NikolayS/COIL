@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { generateReport } from "@/lib/report";
+import { generateReport, generatePlainReport } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -651,12 +651,19 @@ function ExportTab({
   onReset: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedPlain, setCopiedPlain] = useState(false);
   const report = generateReport(data);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(report);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyPlain = async () => {
+    await navigator.clipboard.writeText(generatePlainReport(data));
+    setCopiedPlain(true);
+    setTimeout(() => setCopiedPlain(false), 2000);
   };
 
   const handleSqlDump = () => {
@@ -677,7 +684,15 @@ function ExportTab({
           style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
-          {copied ? "Copied!" : "Copy Full COIL Report"}
+          {copied ? "Copied!" : "Copy for AI Chat"}
+        </button>
+        <button
+          onClick={handleCopyPlain}
+          className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
+          style={{ borderColor: "var(--gold)", color: "var(--gold)", backgroundColor: "transparent" }}
+        >
+          {copiedPlain ? <Check size={16} /> : <Copy size={16} />}
+          {copiedPlain ? "Copied!" : "Copy for TPM / Plain Text"}
         </button>
         {user && (
           <button
