@@ -50,8 +50,8 @@ test.describe("Demo mode — home page", () => {
 
   test("shows Daily tab by default with territory checkboxes", async ({ page }) => {
     // Day picker should be visible
-    await expect(page.getByText("Mon")).toBeVisible();
-    await expect(page.getByText("Tue")).toBeVisible();
+    await expect(page.getByText("Mon").first()).toBeVisible();
+    await expect(page.getByText("Tue").first()).toBeVisible();
     // Territory names
     await expect(page.getByText("Self")).toBeVisible();
     await expect(page.getByText("Health")).toBeVisible();
