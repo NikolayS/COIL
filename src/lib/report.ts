@@ -65,6 +65,74 @@ function calcWeekDrinks(data: WeekData): number {
   return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
 }
 
+export function generatePlainReport(data: WeekData): string {
+  const weekOf = new Date(data.weekOf);
+  const score = calcScore(data);
+  const div = "─────────────────────────────";
+  const lines: string[] = [
+    `COIL — Week of ${formatWeekOf(weekOf)}`,
+    `Score: ${score}/${TOTAL_POSSIBLE}`,
+    ``,
+  ];
+
+  // Territory scores
+  lines.push(div);
+  lines.push(`TERRITORIES`);
+  lines.push(div);
+  for (const t of TERRITORIES) {
+    const s = calcTerritoryScore(data, t.key);
+    const dots = DAYS.map((d) => data.days[d]?.territories[t.key] ? "Y" : "-").join(" ");
+    lines.push(`${t.label.padEnd(14)} ${dots}   ${s}/7`);
+  }
+  const totalDrinks = calcWeekDrinks(data);
+  if (totalDrinks > 0) lines.push(`Drinks:        ${totalDrinks} for the week`);
+  lines.push(``);
+
+  // Daily journal
+  const dayLines: string[] = [];
+  for (const day of DAYS) {
+    const d = data.days[day];
+    if (!d) continue;
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    if (!hasContent) continue;
+    const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
+    dayLines.push(`${DAY_LABELS[day].toUpperCase()}${wolf}`);
+    if (d.gratitude) dayLines.push(`Grateful: ${d.gratitude}`);
+    if (d.wins) dayLines.push(`Wins: ${d.wins}`);
+    if (d.journal) dayLines.push(d.journal);
+    if (d.reflection) dayLines.push(`Better: ${d.reflection}`);
+    dayLines.push(``);
+  }
+  if (dayLines.length) {
+    lines.push(div);
+    lines.push(`DAILY JOURNAL`);
+    lines.push(div);
+    lines.push(...dayLines);
+  }
+
+  // Weekly reflection
+  const w = data.weekly;
+  const reflLines: string[] = [];
+  if (w.biggestWin) reflLines.push(`Biggest Win: ${w.biggestWin}`);
+  if (w.wins) reflLines.push(`Other Wins: ${w.wins}`);
+  if (w.gratitude) reflLines.push(`Gratitude: ${w.gratitude}`);
+  if (w.lessons) reflLines.push(`Lessons: ${w.lessons}`);
+  if (w.focusAchieved) reflLines.push(`Focus achieved: ${w.focusAchieved}`);
+  if (w.focusNext) reflLines.push(`Focus next week: ${w.focusNext}`);
+  if (w.stretchNext) reflLines.push(`Stretch next week: ${w.stretchNext}`);
+  if (w.onTrack) reflLines.push(`On track: ${w.onTrack}`);
+  if (w.cupOverflowing) reflLines.push(`Cup overflowing: ${w.cupOverflowing}`);
+  if (w.improve) reflLines.push(`Areas to improve: ${w.improve}`);
+  if (reflLines.length) {
+    lines.push(div);
+    lines.push(`WEEKLY REFLECTION`);
+    lines.push(div);
+    lines.push(...reflLines);
+  }
+
+  return lines.join("\n");
+}
+
 export function generateReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
