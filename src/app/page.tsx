@@ -1001,37 +1001,13 @@ export default function CoilApp() {
       <div className="max-w-md md:max-w-lg lg:max-w-xl mx-auto w-full flex flex-col min-h-screen">
         {/* Header */}
         <div className="px-5 md:px-8 pt-8 pb-4">
-          <div className="flex items-start justify-between mb-1">
+          {/* Row 1: Logo + action buttons */}
+          <div className="flex items-center justify-between mb-3">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
-            <div className="flex items-start gap-3">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setWeekOffset(o => o - 1)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                  title="Previous week"
-                  aria-label="Previous week"
-                >
-                  <ChevronLeft size={13} />
-                </button>
-                <div className="text-center px-1">
-                  <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
-                  <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
-                </div>
-                <button
-                  onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
-                  disabled={weekOffset === 0}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                  title="Next week"
-                  aria-label="Next week"
-                >
-                  <ChevronRight size={13} />
-                </button>
-              </div>
+            <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
                 aria-label={`Theme: ${theme} (click to cycle)`}
                 title={`Theme: ${theme}`}
@@ -1069,10 +1045,33 @@ export default function CoilApp() {
               </button>
             </div>
           </div>
+          {/* Row 2: Week nav + subtitle/email */}
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-mono tracking-[0.12em] text-[--text-faint] uppercase">
-              Daily Territory Tracker & Journal
-            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setWeekOffset(o => o - 1)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                title="Previous week"
+                aria-label="Previous week"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <div className="text-center px-1">
+                <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
+                <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
+              </div>
+              <button
+                onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
+                disabled={weekOffset === 0}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                title="Next week"
+                aria-label="Next week"
+              >
+                <ChevronRight size={13} />
+              </button>
+            </div>
             <p className="text-[10px] font-mono text-[--text-faint] truncate max-w-[140px]">
               {user ? user.email : "demo mode"}
             </p>

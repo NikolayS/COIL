@@ -121,7 +121,7 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
   hline(y, COLORS.primary);
   y -= 16;
 
-  const weekDate = new Date(data.weekOf + "T12:00:00Z").toLocaleDateString("en-US", {
+  const weekDate = new Date(data.weekOf.includes("T") ? data.weekOf : data.weekOf + "T12:00:00Z").toLocaleDateString("en-US", {
     month: "long", day: "numeric", year: "numeric",
   });
   drawText(`Weekly Report — Week of ${weekDate}`, MARGIN, y, { bold: true, size: 16 });
