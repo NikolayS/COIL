@@ -201,12 +201,16 @@ function demoClearAll() {
 
 // ── Supabase sync ──────────────────────────────────────────────────────────
 
-async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: AbortSignal): Promise<string | null> {
+async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: AbortSignal, isPastWeek = false): Promise<string | null> {
   if (signal?.aborted) return "Timed out";
   const supabase = createClient();
   const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  // For past weeks: preserve existing archived flag (don't reset to false)
+  const row = isPastWeek
+    ? { user_id: userId, week_of: weekOf, data, updated_at: new Date().toISOString() }
+    : { user_id: userId, week_of: weekOf, data, archived: false, updated_at: new Date().toISOString() };
   const { error } = await supabase.from("weeks").upsert(
-    { user_id: userId, week_of: weekOf, data, archived: false, updated_at: new Date().toISOString() },
+    row,
     { onConflict: "user_id,week_of" }
   );
   if (signal?.aborted) return "Timed out";
@@ -930,7 +934,7 @@ export default function CoilApp() {
         setSaveError("Timed out");
         setTimeout(() => setSaveStatus("idle"), 3000);
       }, 10000);
-      syncCurrentToSupabase(user.id, weekData, controller.signal).then((err) => {
+      syncCurrentToSupabase(user.id, weekData, controller.signal, weekOffset !== 0).then((err) => {
         clearTimeout(timeoutId);
         if (controller.signal.aborted) return;
         if (err) {
@@ -941,6 +945,17 @@ export default function CoilApp() {
           setSaveError(null);
           setSaveStatus("saved");
           setTimeout(() => setSaveStatus("idle"), 1500);
+          // Update in-memory archive if editing a past week
+          if (weekOffset !== 0) {
+            setArchive(prev => {
+              const wOf = weekData.weekOf;
+              const exists = prev.some(a => a.weekOf === wOf);
+              if (exists) {
+                return prev.map(a => a.weekOf === wOf ? { ...a, data: weekData } : a);
+              }
+              return [{ weekOf: wOf, data: weekData, archivedAt: new Date().toISOString() }, ...prev];
+            });
+          }
         }
       });
     }, 1500);
