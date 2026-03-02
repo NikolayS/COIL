@@ -96,9 +96,9 @@ export function generatePlainReport(data: WeekData): string {
     if (d.wins) parts.push(`Wins: ${d.wins}`);
     if (d.journal) parts.push(d.journal);
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
-    dayParts.push(parts.join(" | "));
+    dayParts.push(parts.join("\n"));
   }
-  if (dayParts.length) allParts.push(dayParts.join("  "));
+  if (dayParts.length) allParts.push(dayParts.join("\n"));
 
   // Weekly reflection
   const w = data.weekly;
@@ -113,7 +113,7 @@ export function generatePlainReport(data: WeekData): string {
   if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
   if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
   if (w.improve) reflParts.push(`Improve: ${w.improve}`);
-  if (reflParts.length) allParts.push(reflParts.join(" | "));
+  if (reflParts.length) allParts.push(reflParts.join("\n"));
 
   return allParts.join("\n");
 }
