@@ -68,55 +68,43 @@ function calcWeekDrinks(data: WeekData): number {
 export function generatePlainReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
-  const parts: string[] = [];
+  // Each element becomes one paragraph in TPM (separated by blank line = \n\n)
+  const paragraphs: string[] = [];
 
-  // Header — one line
-  parts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE}`);
+  paragraphs.push(`COIL — Week of ${formatWeekOf(weekOf)}, Score: ${score}/${TOTAL_POSSIBLE}`);
 
-  // Territory scores — one line each territory, all on separate lines joined inline
-  const terrParts: string[] = [];
-  for (const t of TERRITORIES) {
-    const s = calcTerritoryScore(data, t.key);
-    const dots = DAYS.map((d) => data.days[d]?.territories[t.key] ? "Y" : "-").join(" ");
-    terrParts.push(`${t.label}: ${dots} (${s}/7)`);
-  }
-  const totalDrinks = calcWeekDrinks(data);
-  const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  parts.push(`TERRITORIES — ${terrParts.join(" | ")}${drinkStr}`);
-
-  // Daily journal — each day is one line: "MON · Wolf: x · Grateful: x · Wins: x · Journal · Better: x"
-  const dayParts: string[] = [];
+  // Daily entries — one paragraph per day with content
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const segments: string[] = [`${DAY_LABELS[day].toUpperCase()}`];
-    if (d.wolf?.length) segments.push(`Wolf: ${d.wolf.join(", ")}`);
-    if (d.gratitude) segments.push(`Grateful: ${d.gratitude}`);
-    if (d.wins) segments.push(`Wins: ${d.wins}`);
-    if (d.journal) segments.push(d.journal);
-    if (d.reflection) segments.push(`Better: ${d.reflection}`);
-    if (segments.length > 1) dayParts.push(segments.join(" · "));
-  }
-  if (dayParts.length) {
-    parts.push(`DAILY JOURNAL — ${dayParts.join(" | ")}`);
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    if (!hasContent) continue;
+    const lines: string[] = [];
+    const wolf = d.wolf?.length ? ` (Wolf: ${d.wolf.join(", ")})` : "";
+    lines.push(`${DAY_LABELS[day]}${wolf}`);
+    if (d.gratitude) lines.push(`Grateful: ${d.gratitude}`);
+    if (d.wins) lines.push(`Wins: ${d.wins}`);
+    if (d.journal) lines.push(d.journal);
+    if (d.reflection) lines.push(`Better: ${d.reflection}`);
+    paragraphs.push(lines.join("\n"));
   }
 
-  // Weekly reflection — one line
+  // Weekly reflection — one paragraph, each field on its own line
   const w = data.weekly;
-  const reflParts: string[] = [];
-  if (w.biggestWin) reflParts.push(`Biggest Win: ${w.biggestWin}`);
-  if (w.wins) reflParts.push(`Other Wins: ${w.wins}`);
-  if (w.gratitude) reflParts.push(`Gratitude: ${w.gratitude}`);
-  if (w.lessons) reflParts.push(`Lessons: ${w.lessons}`);
-  if (w.focusAchieved) reflParts.push(`Focus achieved: ${w.focusAchieved}`);
-  if (w.focusNext) reflParts.push(`Focus next week: ${w.focusNext}`);
-  if (w.stretchNext) reflParts.push(`Stretch: ${w.stretchNext}`);
-  if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
-  if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
-  if (w.improve) reflParts.push(`Improve: ${w.improve}`);
-  if (reflParts.length) parts.push(`WEEKLY REFLECTION — ${reflParts.join(" | ")}`);
+  const reflLines: string[] = [];
+  if (w.biggestWin) reflLines.push(`Biggest Win: ${w.biggestWin}`);
+  if (w.wins) reflLines.push(`Other Wins: ${w.wins}`);
+  if (w.gratitude) reflLines.push(`Gratitude: ${w.gratitude}`);
+  if (w.lessons) reflLines.push(`Lessons: ${w.lessons}`);
+  if (w.focusAchieved) reflLines.push(`Focus achieved: ${w.focusAchieved}`);
+  if (w.focusNext) reflLines.push(`Focus next week: ${w.focusNext}`);
+  if (w.stretchNext) reflLines.push(`Stretch: ${w.stretchNext}`);
+  if (w.onTrack) reflLines.push(`On track: ${w.onTrack}`);
+  if (w.cupOverflowing) reflLines.push(`Cup overflowing: ${w.cupOverflowing}`);
+  if (w.improve) reflLines.push(`Improve: ${w.improve}`);
+  if (reflLines.length) paragraphs.push(reflLines.join("\n"));
 
-  return parts.join("\n");
+  return paragraphs.join("\n\n");
 }
 
 export function generateReport(data: WeekData): string {
