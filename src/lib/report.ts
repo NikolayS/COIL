@@ -171,7 +171,16 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   if (reflParts.length) lines.push(reflParts.join(" | "));
 
   const plain = lines.join("\n");
-  const html = `<span>${lines.map(esc).join("<br>")}</span>`;
+  // First line = header, last line = weekly reflection, middle = daily entries
+  // Wrap each section in <p> so Tiptap inserts an empty line between sections
+  // Within daily section, days are separated by <br> (soft line break)
+  const headerHtml = esc(lines[0]);
+  const dailyLines = lines.slice(1, lines.length - (reflParts.length > 0 ? 1 : 0));
+  const weeklyHtml = reflParts.length > 0 ? esc(lines[lines.length - 1]) : null;
+  const parts: string[] = [`<p>${headerHtml}</p>`];
+  if (dailyLines.length) parts.push(`<p>${dailyLines.map(esc).join("<br>")}</p>`);
+  if (weeklyHtml) parts.push(`<p>${weeklyHtml}</p>`);
+  const html = parts.join("");
   return { plain, html };
 }
 
