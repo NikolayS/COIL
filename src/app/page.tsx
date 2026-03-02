@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { generateReport, generatePlainReport } from "@/lib/report";
+import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -678,22 +678,15 @@ function ExportTab({
   };
 
   const handleCopyPlain = async () => {
-    const plain = generatePlainReport(data);
-    // Write both plain text and HTML — apps like TPM that accept rich paste
-    // will use <br> as soft line breaks (Shift+Enter) instead of paragraph breaks
-    const html = plain
-      .split("\n")
-      .map(line => line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))
-      .join("<br>");
+    const { plain, html } = generatePlainReportHtml(data);
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
           "text/plain": new Blob([plain], { type: "text/plain" }),
-          "text/html": new Blob([`<span>${html}</span>`], { type: "text/html" }),
+          "text/html": new Blob([html], { type: "text/html" }),
         }),
       ]);
     } catch {
-      // Fallback for browsers that don't support ClipboardItem
       await navigator.clipboard.writeText(plain);
     }
     setCopiedPlain(true);
