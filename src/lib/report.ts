@@ -98,7 +98,7 @@ export function generatePlainReport(data: WeekData): string {
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
     dayParts.push(parts.join(" | "));
   }
-  if (dayParts.length) allParts.push(dayParts.join(" // "));
+  if (dayParts.length) allParts.push(dayParts.join("\u2028"));
 
   // Weekly reflection
   const w = data.weekly;
@@ -115,7 +115,8 @@ export function generatePlainReport(data: WeekData): string {
   if (w.improve) reflParts.push(`Improve: ${w.improve}`);
   if (reflParts.length) allParts.push(reflParts.join(" | "));
 
-  return allParts.join("\n");
+  // \u2028 = Unicode line separator — renders as soft line break (Shift+Enter) in many rich text editors
+  return allParts.join("\u2028");
 }
 
 export function generateReport(data: WeekData): string {
