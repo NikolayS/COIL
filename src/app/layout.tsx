@@ -6,8 +6,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "COIL",
   description: "Daily Territory Tracker & Journal",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "COIL",
+  },
   icons: {
     icon: "/favicon.svg",
+    apple: "/apple-touch-icon.png",
   },
 };
 
