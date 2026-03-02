@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
@@ -203,9 +203,15 @@ async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: Ab
   return error ? error.message : null;
 }
 
-async function fetchCurrentFromSupabase(userId: string): Promise<WeekData | null> {
+function getMondayForOffset(offset: number): Date {
+  const d = getMondayOfWeek(new Date());
+  d.setDate(d.getDate() + offset * 7);
+  return d;
+}
+
+async function fetchCurrentFromSupabase(userId: string, offset = 0): Promise<WeekData | null> {
   const supabase = createClient();
-  const monday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  const monday = getMondayForOffset(offset).toISOString().slice(0, 10);
   const { data } = await supabase
     .from("weeks")
     .select("data")
@@ -218,11 +224,13 @@ async function fetchCurrentFromSupabase(userId: string): Promise<WeekData | null
 
 async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]> {
   const supabase = createClient();
+  const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  // Show ALL past weeks (not just archived ones) — any week before this week
   const { data } = await supabase
     .from("weeks")
     .select("week_of, data, updated_at")
     .eq("user_id", userId)
-    .eq("archived", true)
+    .lt("week_of", currentMonday)
     .order("week_of", { ascending: false });
   if (!data) return [];
   return data.map((row) => ({
@@ -776,6 +784,7 @@ export default function CoilApp() {
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
@@ -822,10 +831,10 @@ export default function CoilApp() {
         setUser(user);
         demoClearAll(); // wipe any leftover demo data
         const [remoteWeek, remoteArchive] = await Promise.all([
-          fetchCurrentFromSupabase(user.id),
+          fetchCurrentFromSupabase(user.id, 0),
           fetchArchiveFromSupabase(user.id),
         ]);
-        setWeekData(remoteWeek ?? emptyWeekData(getMondayOfWeek(new Date())));
+        setWeekData(remoteWeek ?? emptyWeekData(getMondayForOffset(0)));
         setArchive(remoteArchive);
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
@@ -836,6 +845,16 @@ export default function CoilApp() {
     });
   }, []);
 
+  // Reload week data when offset changes (week navigation)
+  useEffect(() => {
+    if (weekOffset === 0) return; // initial load handled above
+    if (!user) return;
+    setWeekData(null);
+    fetchCurrentFromSupabase(user.id, weekOffset).then((w) => {
+      setWeekData(w ?? emptyWeekData(getMondayForOffset(weekOffset)));
+    });
+  }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSignOut = async () => {
     document.cookie = "coil_demo=; path=/; max-age=0";
     const supabase = createClient();
@@ -843,9 +862,10 @@ export default function CoilApp() {
     window.location.href = "/login";
   };
 
-  // Auto-archive on week boundary (runs once data is loaded)
+  // Auto-archive on week boundary (runs once data is loaded, only when viewing current week)
   useEffect(() => {
     if (!weekData) return;
+    if (weekOffset !== 0) return; // don't auto-archive when browsing past weeks
     const currentMonday = getMondayOfWeek(new Date()).toISOString();
     if (weekData.weekOf !== currentMonday) {
       const hasContent = calcScore(weekData) > 0 ||
@@ -948,9 +968,30 @@ export default function CoilApp() {
           <div className="flex items-start justify-between mb-1">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="flex items-start gap-3">
-              <div className="text-right">
-                <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
-                <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setWeekOffset(o => o - 1)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                  title="Previous week"
+                  aria-label="Previous week"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                <div className="text-center px-1">
+                  <p className="text-[10px] font-mono tracking-[0.15em] text-[--text-dim] uppercase">Week of</p>
+                  <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
+                </div>
+                <button
+                  onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
+                  disabled={weekOffset === 0}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                  title="Next week"
+                  aria-label="Next week"
+                >
+                  <ChevronRight size={13} />
+                </button>
               </div>
               <button
                 onClick={toggleTheme}
