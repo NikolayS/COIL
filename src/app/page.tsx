@@ -824,7 +824,16 @@ export default function CoilApp() {
   // Read initial state from URL params
   const initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const initTab = (initParams.get("tab") as TabKey) ?? "daily";
-  const initOffset = parseInt(initParams.get("week") ?? "0", 10);
+  // "week" param is an ISO date string (e.g. "2026-02-23"), not a relative offset
+  const initWeekDate = initParams.get("week");
+  const initOffset = (() => {
+    if (!initWeekDate) return 0;
+    // Convert ISO date → offset relative to current week
+    const target = new Date(initWeekDate + "T12:00:00Z");
+    const current = getWeekStart(new Date(), "monday"); // rough — weekStart not loaded yet
+    const diffMs = target.getTime() - current.getTime();
+    return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  })();
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
@@ -905,15 +914,18 @@ export default function CoilApp() {
     });
   }, []);
 
-  // Sync tab + weekOffset to URL params (no page reload, preserves back/forward)
+  // Sync tab + week ISO date to URL params (no page reload, preserves back/forward)
   useEffect(() => {
     const params = new URLSearchParams();
     if (activeTab !== "daily") params.set("tab", activeTab);
-    if (weekOffset !== 0) params.set("week", String(weekOffset));
+    if (weekOffset !== 0 && weekData) {
+      // Use the actual weekOf date — stable across time, not relative
+      params.set("week", new Date(weekData.weekOf).toISOString().slice(0, 10));
+    }
     const qs = params.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newUrl);
-  }, [activeTab, weekOffset]);
+  }, [activeTab, weekOffset, weekData]);
 
   // Reload week data when offset changes (week navigation)
   useEffect(() => {
