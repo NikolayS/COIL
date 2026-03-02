@@ -115,12 +115,12 @@ export function generatePlainReport(data: WeekData): string {
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
     dayParts.push(parts.join("\n"));
   }
-  if (dayParts.length) allParts.push(dayParts.join("\n"));
+  if (dayParts.length) allParts.push(dayParts.join("\n\n"));
 
   // Weekly reflection
   allParts.push(weeklyLines(data.weekly).join("\n"));
 
-  return allParts.join("\n");
+  return allParts.join("\n\n");
 }
 
 function esc(s: string): string {
