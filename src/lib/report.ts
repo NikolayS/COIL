@@ -194,6 +194,89 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   return { plain, html };
 }
 
+export function generateEmailHtml(data: WeekData): string {
+  const weekOf = new Date(data.weekOf);
+  const score = calcScore(data);
+  const totalDrinks = calcWeekDrinks(data);
+  const w = data.weekly;
+
+  const style = {
+    body: `font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 32px 24px;`,
+    h1: `font-size: 28px; font-weight: 700; color: #b8860b; margin: 0 0 4px 0;`,
+    subtitle: `font-size: 13px; color: #888; margin: 0 0 24px 0;`,
+    section: `margin: 24px 0;`,
+    h2: `font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #888; margin: 0 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 6px;`,
+    h3: `font-size: 15px; font-weight: 600; color: #1a1a1a; margin: 16px 0 4px 0;`,
+    table: `width: 100%; border-collapse: collapse; font-size: 13px;`,
+    th: `padding: 6px 8px; background: #b8860b; color: #fff; text-align: center; font-weight: 600;`,
+    thLeft: `padding: 6px 8px; background: #b8860b; color: #fff; text-align: left; font-weight: 600;`,
+    td: `padding: 5px 8px; border-bottom: 1px solid #f0f0f0; text-align: center;`,
+    tdLeft: `padding: 5px 8px; border-bottom: 1px solid #f0f0f0; text-align: left;`,
+    tdBold: `padding: 5px 8px; border-bottom: 1px solid #f0f0f0; text-align: center; font-weight: 700;`,
+    label: `font-weight: 600; color: #555; min-width: 140px; display: inline-block;`,
+    value: `color: #1a1a1a;`,
+    score: `font-size: 32px; font-weight: 700; color: #b8860b;`,
+  };
+
+  // Territory table
+  const terrRows = TERRITORIES.map(t => {
+    const cells = DAYS.map(d => {
+      const hit = data.days[d]?.territories[t.key];
+      return `<td style="${style.td}">${hit ? `<span style="color:#4a9e6b;font-weight:700">Y</span>` : `<span style="color:#ccc">-</span>`}</td>`;
+    }).join("");
+    const total = calcTerritoryScore(data, t.key);
+    return `<tr><td style="${style.tdLeft}">${esc(t.label)}</td>${cells}<td style="${style.tdBold}">${total}/7</td></tr>`;
+  }).join("");
+  const totals = DAYS.map(d => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
+  const totalRow = `<tr style="background:#f9f9f9"><td style="${style.tdLeft}"><strong>Total</strong></td>${totals.map(n => `<td style="${style.tdBold}">${n}</td>`).join("")}<td style="${style.tdBold}">${score}/${TOTAL_POSSIBLE}</td></tr>`;
+
+  // Daily journal
+  const dayHtml = DAYS.map(day => {
+    const d = data.days[day];
+    if (!d) return "";
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    if (!hasContent) return "";
+    const wolf = d.wolf?.length ? ` <span style="color:#888;font-size:13px">· Wolf: ${esc(d.wolf.join(", "))}</span>` : "";
+    const fields = [
+      d.gratitude ? `<div><span style="${style.label}">Grateful:</span> <span style="${style.value}">${esc(d.gratitude)}</span></div>` : "",
+      d.wins ? `<div><span style="${style.label}">Wins:</span> <span style="${style.value}">${esc(d.wins)}</span></div>` : "",
+      d.journal ? `<div style="color:#333;margin:4px 0">${esc(d.journal)}</div>` : "",
+      d.reflection ? `<div><span style="${style.label}">Better:</span> <span style="${style.value}">${esc(d.reflection)}</span></div>` : "",
+    ].filter(Boolean).join("");
+    return `<div style="margin-bottom:12px"><div style="${style.h3}">${DAY_LABELS[day]}${wolf}</div>${fields}</div>`;
+  }).join("");
+
+  // Weekly reflection
+  const reflFields: [string, string][] = [
+    ["Biggest Win", w.biggestWin], ["Other Wins", w.wins], ["Gratitude", w.gratitude],
+    ["Lessons", w.lessons], ["Focus achieved", w.focusAchieved], ["Focus next week", w.focusNext],
+    ["Stretch", w.stretchNext], ["On track", w.onTrack], ["Cup overflowing", w.cupOverflowing],
+    ["Improve", w.improve],
+  ];
+  const reflHtml = reflFields.filter(([, v]) => v).map(([k, v]) =>
+    `<div style="margin-bottom:6px"><span style="${style.label}">${esc(k)}:</span> <span style="${style.value}">${esc(v)}</span></div>`
+  ).join("");
+
+  return `<div style="${style.body}">
+  <h1 style="${style.h1}">COIL</h1>
+  <p style="${style.subtitle}">Weekly Report — Week of ${esc(formatWeekOf(weekOf))}</p>
+  <div style="margin-bottom:24px"><span style="${style.score}">${score}</span><span style="color:#888;font-size:18px"> / ${TOTAL_POSSIBLE}</span></div>
+
+  <div style="${style.section}">
+    <h2 style="${style.h2}">Territories</h2>
+    <table style="${style.table}">
+      <tr><th style="${style.thLeft}">Territory</th>${DAYS.map(d => `<th style="${style.th}">${DAY_LABELS[d]}</th>`).join("")}<th style="${style.th}">Total</th></tr>
+      ${terrRows}${totalRow}
+    </table>
+    ${totalDrinks > 0 ? `<p style="margin:8px 0 0;font-size:13px;color:#888">Drinks this week: ${totalDrinks}</p>` : ""}
+  </div>
+
+  ${dayHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Daily Journal</h2>${dayHtml}</div>` : ""}
+
+  ${reflHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Weekly Reflection</h2>${reflHtml}</div>` : ""}
+</div>`;
+}
+
 export function generateReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
