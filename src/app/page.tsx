@@ -724,22 +724,27 @@ function ExportTab({
             Download PDF
           </button>
         )}
-        {user && (
-          <button
-            onClick={handleSqlDump}
-            className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
-            style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
-          >
-            <Download size={16} />
-            Download SQL Dump (all weeks)
-          </button>
-        )}
       </div>
 
       {/* Preview */}
       <div className="bg-[--bg-input] rounded-2xl p-4 border border-[--border] overflow-auto max-h-64">
         <pre className="text-xs text-[--text-dim] font-mono whitespace-pre-wrap leading-relaxed">{report}</pre>
       </div>
+
+      {/* Global data export */}
+      {user && (
+        <div className="border-t border-[--border] pt-4">
+          <p className="text-xs text-[--text-faint] font-mono uppercase tracking-[0.1em] mb-3">All Data</p>
+          <button
+            onClick={handleSqlDump}
+            className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
+            style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
+          >
+            <Download size={16} />
+            Download SQL Dump (all weeks)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
