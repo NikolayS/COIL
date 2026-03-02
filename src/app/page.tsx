@@ -703,7 +703,7 @@ function ExportTab({
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[--text-muted] leading-relaxed mb-4">
-          Week of {new Date(data.weekOf).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}. Use AI Chat format for Claude/ChatGPT, or Plain Text for TPM and other apps.
+          Week of {new Date(data.weekOf).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}. Use AI Chat format for Claude/ChatGPT, or Rich Copy for TPM and similar apps.
         </p>
         <button
           onClick={handleCopy}
@@ -719,7 +719,7 @@ function ExportTab({
           style={{ borderColor: "var(--gold)", color: "var(--gold)", backgroundColor: "transparent" }}
         >
           {copiedPlain ? <Check size={16} /> : <Copy size={16} />}
-          {copiedPlain ? "Copied!" : "Copy for TPM / Plain Text"}
+          {copiedPlain ? "Copied!" : "Rich Copy (for TPM)"}
         </button>
         {user && (
           <button
