@@ -122,6 +122,11 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Bold the "Key: value" label in HTML output
+function boldKey(s: string): string {
+  return esc(s).replace(/^([^:]+:)/, "<strong>$1</strong>");
+}
+
 // Returns both plain text and HTML (with <br> for soft line breaks).
 // Tiptap/ProseMirror treats pasted <br> as Shift+Enter — no paragraph gaps.
 export function generatePlainReportHtml(data: WeekData): { plain: string; html: string } {
@@ -180,9 +185,9 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   const weeklyLines = numWeeklyLines > 0 ? lines.slice(lines.length - 1) : [];
 
   const plain = lines.join("\n");
-  const htmlParts: string[] = [`<p>${headerLines.map(esc).join("<br>")}</p>`];
-  if (dailyLines.length) htmlParts.push(`<p>${dailyLines.map(esc).join("<br>")}</p>`);
-  if (weeklyLines.length) htmlParts.push(`<p>${weeklyLines.map(esc).join("<br>")}</p>`);
+  const htmlParts: string[] = [`<p>${headerLines.map(boldKey).join("<br>")}</p>`];
+  if (dailyLines.length) htmlParts.push(`<p>${dailyLines.map(boldKey).join("<br>")}</p>`);
+  if (weeklyLines.length) htmlParts.push(`<p>${weeklyLines.map(boldKey).join("<br>")}</p>`);
   const html = htmlParts.join("");
   return { plain, html };
 }
