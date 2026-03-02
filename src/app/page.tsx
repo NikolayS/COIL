@@ -73,10 +73,20 @@ const TOTAL_POSSIBLE = 35; // 5 territories × 7 days
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getMondayOfWeek(date: Date): Date {
+  return getWeekStart(date, "monday");
+}
+
+function getWeekStart(date: Date, weekStart: "monday" | "sunday" = "monday"): Date {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
+  const day = d.getDay(); // 0=Sun, 1=Mon, ...6=Sat
+  if (weekStart === "monday") {
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+  } else {
+    // Sunday start
+    const diff = d.getDate() - day;
+    d.setDate(diff);
+  }
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -203,15 +213,15 @@ async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: Ab
   return error ? error.message : null;
 }
 
-function getMondayForOffset(offset: number): Date {
-  const d = getMondayOfWeek(new Date());
+function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "monday"): Date {
+  const d = getWeekStart(new Date(), weekStart);
   d.setDate(d.getDate() + offset * 7);
   return d;
 }
 
-async function fetchCurrentFromSupabase(userId: string, offset = 0): Promise<WeekData | null> {
+async function fetchCurrentFromSupabase(userId: string, offset = 0, weekStart: "monday" | "sunday" = "monday"): Promise<WeekData | null> {
   const supabase = createClient();
-  const monday = getMondayForOffset(offset).toISOString().slice(0, 10);
+  const monday = getMondayForOffset(offset, weekStart).toISOString().slice(0, 10);
   const { data } = await supabase
     .from("weeks")
     .select("data")
@@ -445,7 +455,7 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; weekOffset?: number }) {
+function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
@@ -471,7 +481,7 @@ function DailyTab({ data, onChange, weekOffset = 0 }: { data: WeekData; onChange
     <div className="space-y-5">
       {/* Day picker */}
       <div className="grid grid-cols-7 gap-1.5">
-        {DAYS.map((day) => {
+        {(weekStart === "sunday" ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const : DAYS).map((day) => {
           const score = Object.values(data.days[day]?.territories ?? {}).filter(Boolean).length;
           const isActive = activeDay === day;
           const isToday = day === todayKey;
@@ -782,6 +792,7 @@ export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
   const [user, setUser] = useState<User | null>(null);
+  const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
@@ -831,11 +842,20 @@ export default function CoilApp() {
         // Authenticated: Supabase is the only source. Never touch localStorage.
         setUser(user);
         demoClearAll(); // wipe any leftover demo data
+        // Load settings (for weekStart) in parallel
+        const supabaseClient = createClient();
+        const { data: settingsData } = await supabaseClient
+          .from("settings")
+          .select("week_start")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
+        setWeekStart(ws);
         const [remoteWeek, remoteArchive] = await Promise.all([
-          fetchCurrentFromSupabase(user.id, 0),
+          fetchCurrentFromSupabase(user.id, 0, ws),
           fetchArchiveFromSupabase(user.id),
         ]);
-        setWeekData(remoteWeek ?? emptyWeekData(getMondayForOffset(0)));
+        setWeekData(remoteWeek ?? emptyWeekData(getWeekStart(new Date(), ws)));
         setArchive(remoteArchive);
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
@@ -851,8 +871,8 @@ export default function CoilApp() {
     if (weekOffset === 0) return; // initial load handled above
     if (!user) return;
     setWeekData(null);
-    fetchCurrentFromSupabase(user.id, weekOffset).then((w) => {
-      setWeekData(w ?? emptyWeekData(getMondayForOffset(weekOffset)));
+    fetchCurrentFromSupabase(user.id, weekOffset, weekStart).then((w) => {
+      setWeekData(w ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)));
     });
   }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -867,7 +887,7 @@ export default function CoilApp() {
   useEffect(() => {
     if (!weekData) return;
     if (weekOffset !== 0) return; // don't auto-archive when browsing past weeks
-    const currentMonday = getMondayOfWeek(new Date()).toISOString();
+    const currentMonday = getWeekStart(new Date(), weekStart).toISOString();
     if (weekData.weekOf !== currentMonday) {
       const hasContent = calcScore(weekData) > 0 ||
         Object.values(weekData.weekly).some(v => v.trim() !== "") ||
@@ -883,7 +903,7 @@ export default function CoilApp() {
         if (isDemo) demoSaveArchive(newArchive);
         if (user) archiveInSupabase(user.id, weekData);
       }
-      const fresh = emptyWeekData(getMondayOfWeek(new Date()));
+      const fresh = emptyWeekData(getWeekStart(new Date(), weekStart));
       setWeekData(fresh);
       if (isDemo) demoSaveCurrent(fresh);
     }
@@ -947,7 +967,7 @@ export default function CoilApp() {
     setArchive(newArchive);
     if (isDemo) demoSaveArchive(newArchive);
     if (user) archiveInSupabase(user.id, weekData);
-    const newWeek = emptyWeekData(getMondayOfWeek(new Date()));
+    const newWeek = emptyWeekData(getWeekStart(new Date(), weekStart));
     setWeekData(newWeek);
     if (isDemo) demoSaveCurrent(newWeek);
     if (user) syncCurrentToSupabase(user.id, newWeek);
@@ -956,7 +976,7 @@ export default function CoilApp() {
 
   const handleReset = () => {
     if (!confirm("Reset all data for this week? This cannot be undone.")) return;
-    const fresh = emptyWeekData(getMondayOfWeek(new Date()));
+    const fresh = emptyWeekData(getWeekStart(new Date(), weekStart));
     setWeekData(fresh);
     if (isDemo) demoSaveCurrent(fresh);
   };
@@ -1083,7 +1103,7 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "daily" && (
-            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} />
+            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "weekly" && (
             <WeeklyTab data={weekData} onChange={setWeekData} />
