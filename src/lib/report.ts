@@ -68,11 +68,11 @@ function calcWeekDrinks(data: WeekData): number {
 export function generatePlainReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
-  // TPM renders \n as a paragraph gap. Use \n only between top-level sections.
-  // Within each section, join with " | " so everything stays in one paragraph.
-  const paragraphs: string[] = [];
+  // TPM treats every \n as a paragraph gap. Entire report = one block of text.
+  // Days separated by " // ", fields within a day by " | ".
+  const allParts: string[] = [];
 
-  // Header + territory scores in one paragraph
+  // Header + territories
   const terrParts = TERRITORIES.map(t => {
     const s = calcTerritoryScore(data, t.key);
     const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join("");
@@ -80,9 +80,10 @@ export function generatePlainReport(data: WeekData): string {
   });
   const totalDrinks = calcWeekDrinks(data);
   const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  paragraphs.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}`);
+  allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}`);
 
-  // Daily entries — one paragraph per day, fields joined with " | "
+  // Daily entries separated by " // "
+  const dayParts: string[] = [];
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
@@ -95,10 +96,11 @@ export function generatePlainReport(data: WeekData): string {
     if (d.wins) parts.push(`Wins: ${d.wins}`);
     if (d.journal) parts.push(d.journal);
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
-    paragraphs.push(parts.join(" | "));
+    dayParts.push(parts.join(" | "));
   }
+  if (dayParts.length) allParts.push(dayParts.join(" // "));
 
-  // Weekly reflection — one paragraph
+  // Weekly reflection
   const w = data.weekly;
   const reflParts: string[] = [];
   if (w.biggestWin) reflParts.push(`Biggest Win: ${w.biggestWin}`);
@@ -111,9 +113,9 @@ export function generatePlainReport(data: WeekData): string {
   if (w.onTrack) reflParts.push(`On track: ${w.onTrack}`);
   if (w.cupOverflowing) reflParts.push(`Cup overflowing: ${w.cupOverflowing}`);
   if (w.improve) reflParts.push(`Improve: ${w.improve}`);
-  if (reflParts.length) paragraphs.push(reflParts.join(" | "));
+  if (reflParts.length) allParts.push(reflParts.join(" | "));
 
-  return paragraphs.join("\n");
+  return allParts.join("\n");
 }
 
 export function generateReport(data: WeekData): string {
