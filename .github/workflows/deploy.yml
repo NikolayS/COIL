@@ -141,6 +141,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 20m
           envs: COIL_APP_NEXT_PUBLIC_SUPABASE_URL,COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY,COIL_APP_NEXT_PUBLIC_SITE_URL,COIL_APP_NEXT_PUBLIC_APP_URL,COIL_APP_SUPABASE_SERVICE_ROLE_KEY,COIL_APP_RESEND_API_KEY,COIL_APP_CRON_SECRET
           script: |
             set -e
