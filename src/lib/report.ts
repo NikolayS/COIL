@@ -278,7 +278,7 @@ export function generateReport(data: WeekData): string {
     `|-----------|-----|-----|-----|-----|-----|-----|-----|-------|`,
   ];
   for (const t of TERRITORIES) {
-    const row = DAYS.map((d) => (data.days[d]?.territories[t.key] ? "✓" : "·")).join(" | ");
+    const row = DAYS.map((d) => (data.days[d]?.territories[t.key] ? "✅" : "⬜")).join(" | ");
     const total = calcTerritoryScore(data, t.key);
     lines.push(`| ${t.label.padEnd(9)} | ${row} | ${total}/7 |`);
   }
