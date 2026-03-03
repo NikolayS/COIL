@@ -271,11 +271,9 @@ export function generateReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [
-    `# COIL Weekly Report — Week of ${formatWeekOf(weekOf)}`,
-    ``,
     `## Weekly Score: ${score}/${TOTAL_POSSIBLE}`,
     ``,
-    `## Daily Territory Scores`,
+    `## Daily Scores`,
     `| Territory | Mon | Tue | Wed | Thu | Fri | Sat | Sun | Total |`,
     `|-----------|-----|-----|-----|-----|-----|-----|-----|-------|`,
   ];
@@ -285,27 +283,30 @@ export function generateReport(data: WeekData): string {
     lines.push(`| ${t.label.padEnd(9)} | ${row} | ${total}/7 |`);
   }
   const totals = DAYS.map((d) => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
-  lines.push(`| Total | ${totals.join(" | ")} | ${score}/${TOTAL_POSSIBLE} |`);
+  lines.push(`| **Total** | ${totals.join(" | ")} | **${score}/${TOTAL_POSSIBLE}** |`);
   lines.push(``);
-  lines.push(`## Drinks`);
+  lines.push(`## Alcohol Tracking`);
   const drinkRow = DAYS.map((d) => data.days[d]?.drinks ?? 0).join(" | ");
-  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly |`);
-  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------|`);
-  lines.push(`| ${drinkRow} | ${calcWeekDrinks(data)} |`);
+  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
+  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
+  lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
   lines.push(``);
   lines.push(`## Daily Journal`);
+  lines.push(``);
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
-    lines.push(`### ${DAY_LABELS[day]}${wolf}`);
-    if (d.gratitude) lines.push(`Grateful for: ${d.gratitude}`);
-    if (d.wins) lines.push(`Wins: ${d.wins}`);
-    if (d.journal) lines.push(d.journal);
-    if (d.reflection) lines.push(`Better: ${d.reflection}`);
+    lines.push(`### ${DAY_LABELS[day]}`);
+    if (d.wolf?.length) lines.push(`**Wolf:** ${d.wolf.join(", ")}`);
+    lines.push(`**Drinks:** ${d.drinks ?? 0}`);
+    if (d.gratitude) lines.push(`**Grateful:** ${d.gratitude}`);
+    if (d.wins) lines.push(`**Wins:** ${d.wins}`);
+    if (d.journal) lines.push(`**Notes:** ${d.journal}`);
+    if (d.reflection) lines.push(`**Could do better:** ${d.reflection}`);
     lines.push(``);
   }
   lines.push(`## Weekly Reflection`);
+  lines.push(``);
   lines.push(...weeklyLines(data.weekly));
   return lines.join("\n");
 }
