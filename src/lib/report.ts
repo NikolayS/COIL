@@ -271,6 +271,8 @@ export function generateReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [
+    `# COIL Weekly Report — Week of ${formatWeekOf(weekOf)}`,
+    ``,
     `## Weekly Score: ${score}/${TOTAL_POSSIBLE}`,
     ``,
     `## Daily Scores`,
