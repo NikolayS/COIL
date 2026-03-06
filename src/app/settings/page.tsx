@@ -63,7 +63,6 @@ function SettingsInner() {
   const [reminder2Hour, setReminder2Hour] = useState(20);
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
-  const [notes, setNotes] = useState("");
 
   const allTimezones = useMemo(() => getAllTimezones(), []);
 
@@ -104,7 +103,6 @@ function SettingsInner() {
         // saved timezone wins over browser detection; fall back to browser if not saved
         setTimezone(data.timezone || browserTz);
         setReportEmail(data.report_email ?? user.email ?? "");
-        setNotes(data.notes ?? "");
       } else {
         // New user — use browser timezone and auth email as defaults
         setTimezone(browserTz);
@@ -132,7 +130,6 @@ function SettingsInner() {
         reminder2_hour: reminder2Hour,
         report_email: reportEmail || user.email,
         timezone,
-        notes,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -461,24 +458,6 @@ function SettingsInner() {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Notes card */}
-          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
-            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Notes</p>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Personal notes, dietary preferences, reminders..."
-              rows={4}
-              className="w-full bg-transparent text-sm font-mono rounded-lg px-3 py-2 outline-none transition-colors resize-y"
-              style={{
-                color: "var(--text)",
-                border: "1px solid var(--border)",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "var(--gold)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-            />
           </div>
 
           {saveError && (
