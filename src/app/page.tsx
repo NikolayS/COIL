@@ -1205,6 +1205,13 @@ export default function CoilApp() {
         </div>
       </div>
 
+      {/* Version footer */}
+      <div className="text-center py-2">
+        <span className="text-[9px] font-mono text-[--text-faint] opacity-40">
+          {process.env.NEXT_PUBLIC_BUILD_VERSION || "dev"}
+        </span>
+      </div>
+
       {/* Fixed save status pill */}
       {saveStatus !== "idle" && (
         <div
