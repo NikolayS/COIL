@@ -459,7 +459,7 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData) => WeekData)) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
@@ -469,7 +469,8 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
 
   const updateDay = useCallback(
     (patch: Partial<DayData>) => {
-      onChange((prev: WeekData) => {
+      onChange((prev: WeekData | null) => {
+        if (!prev) return prev;
         const prevDay = prev.days[activeDay] ?? emptyDayData();
         return { ...prev, days: { ...prev.days, [activeDay]: { ...prevDay, ...patch } } };
       });
