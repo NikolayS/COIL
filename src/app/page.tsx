@@ -479,7 +479,8 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   };
 
   const activeDayAgo = daysAgo(activeDay);
-  const isLocked = activeDayAgo >= 2 && !editUnlocked[`${weekOffset}:${activeDay}`];
+  const isFuture = activeDayAgo < 0;
+  const isLocked = isFuture || (activeDayAgo >= 2 && !editUnlocked[`${weekOffset}:${activeDay}`]);
 
   const unlockDay = () => {
     setEditUnlocked(prev => ({ ...prev, [`${weekOffset}:${activeDay}`]: true }));
@@ -546,20 +547,22 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
         <span className="font-mono text-sm" style={{color:"var(--gold)"}}>{dayScore}/5</span>
       </div>
 
-      {/* Lock banner for old days */}
+      {/* Lock banner for old/future days */}
       {isLocked && (
         <div className="flex items-center justify-between rounded-xl px-4 py-3 border"
           style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border)" }}>
           <span className="text-xs font-mono text-[--text-muted]">
-            🔒 {activeDayAgo} days ago — read-only
+            {isFuture ? "🔒 This day hasn\u2019t happened yet" : `🔒 ${activeDayAgo} days ago \u2014 read-only`}
           </span>
-          <button
-            onClick={unlockDay}
-            className="text-xs font-mono px-3 py-1 rounded-lg transition-colors"
-            style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", color: "var(--gold)" }}
-          >
-            Unlock
-          </button>
+          {!isFuture && (
+            <button
+              onClick={unlockDay}
+              className="text-xs font-mono px-3 py-1 rounded-lg transition-colors"
+              style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", color: "var(--gold)" }}
+            >
+              Unlock
+            </button>
+          )}
         </div>
       )}
 
