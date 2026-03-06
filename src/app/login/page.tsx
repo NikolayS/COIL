@@ -176,6 +176,11 @@ function LoginInner() {
           </form>
         )}
       </div>
+      <div className="fixed bottom-3 left-0 right-0 text-center">
+        <span className="text-[9px] font-mono text-[--text-faint] opacity-40">
+          {process.env.NEXT_PUBLIC_BUILD_VERSION || "dev"}
+        </span>
+      </div>
     </div>
   );
 }
