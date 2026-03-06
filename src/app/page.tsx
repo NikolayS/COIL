@@ -459,7 +459,7 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData) => WeekData)) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
@@ -469,10 +469,12 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
 
   const updateDay = useCallback(
     (patch: Partial<DayData>) => {
-      const updated = { ...data, days: { ...data.days, [activeDay]: { ...dayData, ...patch } } };
-      onChange(updated);
+      onChange((prev: WeekData) => {
+        const prevDay = prev.days[activeDay] ?? emptyDayData();
+        return { ...prev, days: { ...prev.days, [activeDay]: { ...prevDay, ...patch } } };
+      });
     },
-    [data, onChange, activeDay, dayData]
+    [onChange, activeDay]
   );
 
   const toggleTerritory = (key: TerritoryKey) => {
@@ -991,9 +993,9 @@ export default function CoilApp() {
       return;
     }
     if (!user) return;
-    setSaveStatus("saving");
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
+      setSaveStatus("saving");
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
