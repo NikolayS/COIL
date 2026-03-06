@@ -468,29 +468,21 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   const dayData = data.days[activeDay] ?? emptyDayData();
   const weeklyDrinks = calcWeekDrinks(data);
 
-  // How many days ago is a given day key (on the current week)?
+  // How many days ago is a given day key?
   const daysAgo = (dayKey: string): number => {
     const dayOrder = weekStart === "sunday"
       ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
       : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
     const todayIdx = dayOrder.indexOf(todayKey);
     const dayIdx = dayOrder.indexOf(dayKey);
-    // weekOffset=0 is current week; each -1 is 7 more days ago
     return (todayIdx - dayIdx) + (-weekOffset * 7);
   };
 
-  const isDayProtected = (dayKey: string): boolean => {
-    const ago = daysAgo(dayKey);
-    return ago >= 2; // yesterday and today are fine; 2+ days ago needs confirmation
-  };
+  const activeDayAgo = daysAgo(activeDay);
+  const isLocked = activeDayAgo >= 2 && !editUnlocked[`${weekOffset}:${activeDay}`];
 
-  const handleDaySelect = (dayKey: string) => {
-    if (isDayProtected(dayKey) && !editUnlocked[dayKey]) {
-      const ago = daysAgo(dayKey);
-      if (!confirm(`This was ${ago} days ago. Edit anyway?`)) return;
-      setEditUnlocked(prev => ({ ...prev, [dayKey]: true }));
-    }
-    setActiveDay(dayKey);
+  const unlockDay = () => {
+    setEditUnlocked(prev => ({ ...prev, [`${weekOffset}:${activeDay}`]: true }));
   };
 
   const updateDay = useCallback(
@@ -521,7 +513,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
           return (
             <button
               key={day}
-              onClick={() => handleDaySelect(day)}
+              onClick={() => setActiveDay(day)}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
                 backgroundColor: isActive ? "var(--gold-bg)" : "transparent",
@@ -554,8 +546,25 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
         <span className="font-mono text-sm" style={{color:"var(--gold)"}}>{dayScore}/5</span>
       </div>
 
+      {/* Lock banner for old days */}
+      {isLocked && (
+        <div className="flex items-center justify-between rounded-xl px-4 py-3 border"
+          style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border)" }}>
+          <span className="text-xs font-mono text-[--text-muted]">
+            🔒 {activeDayAgo} days ago — read-only
+          </span>
+          <button
+            onClick={unlockDay}
+            className="text-xs font-mono px-3 py-1 rounded-lg transition-colors"
+            style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", color: "var(--gold)" }}
+          >
+            Unlock
+          </button>
+        </div>
+      )}
+
       {/* Territories */}
-      <div className="space-y-2">
+      <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
         {TERRITORIES.map((t) => (
           <TerritoryRow
             key={t.key}
@@ -567,42 +576,48 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
       </div>
 
       {/* Wolf check */}
-      <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
+      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+        <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
+      </div>
 
       {/* Drinks */}
-      <DrinkCounter
-        value={dayData.drinks}
-        weeklyTotal={weeklyDrinks}
-        onChange={(drinks) => updateDay({ drinks })}
-      />
+      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+        <DrinkCounter
+          value={dayData.drinks}
+          weeklyTotal={weeklyDrinks}
+          onChange={(drinks) => updateDay({ drinks })}
+        />
+      </div>
 
       {/* Gratitude & Wins */}
-      <JournalField
-        label="Gratitude"
-        placeholder="What are you grateful for today?"
-        value={dayData.gratitude}
-        onChange={(gratitude) => updateDay({ gratitude })}
-      />
-      <JournalField
-        label="Wins"
-        placeholder="What did you win today?"
-        value={dayData.wins}
-        onChange={(wins) => updateDay({ wins })}
-      />
+      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+        <JournalField
+          label="Gratitude"
+          placeholder="What are you grateful for today?"
+          value={dayData.gratitude}
+          onChange={(gratitude) => updateDay({ gratitude })}
+        />
+        <JournalField
+          label="Wins"
+          placeholder="What did you win today?"
+          value={dayData.wins}
+          onChange={(wins) => updateDay({ wins })}
+        />
 
-      {/* Journal */}
-      <JournalField
-        label="Journal Notes"
-        placeholder="Challenges, what happened today..."
-        value={dayData.journal}
-        onChange={(journal) => updateDay({ journal })}
-      />
-      <JournalField
-        label="What could I have done better?"
-        placeholder="Reflect honestly..."
-        value={dayData.reflection}
-        onChange={(reflection) => updateDay({ reflection })}
-      />
+        {/* Journal */}
+        <JournalField
+          label="Journal Notes"
+          placeholder="Challenges, what happened today..."
+          value={dayData.journal}
+          onChange={(journal) => updateDay({ journal })}
+        />
+        <JournalField
+          label="What could I have done better?"
+          placeholder="Reflect honestly..."
+          value={dayData.reflection}
+          onChange={(reflection) => updateDay({ reflection })}
+        />
+      </div>
     </div>
   );
 }
