@@ -164,7 +164,9 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            BUILD_VERSION="$(git rev-parse --short HEAD) $(date -u +%Y-%m-%d)"
+            TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
+            SHA=$(git rev-parse --short HEAD)
+            BUILD_VERSION="${TAG:-$SHA}"
 
             docker build -t coil-app \
               --build-arg NEXT_PUBLIC_SUPABASE_URL="${COIL_APP_NEXT_PUBLIC_SUPABASE_URL}" \
