@@ -540,7 +540,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
               >
                 {score}
               </span>
-              {isToday && weekOffset < 0 && <span className="w-1 h-1 rounded-full" style={{backgroundColor: 'var(--gold)'}} />}
+              
             </button>
           );
         })}
