@@ -164,11 +164,14 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
+            BUILD_VERSION="$(git rev-parse --short HEAD) $(date -u +%Y-%m-%d)"
+
             docker build -t coil-app \
               --build-arg NEXT_PUBLIC_SUPABASE_URL="${COIL_APP_NEXT_PUBLIC_SUPABASE_URL}" \
               --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
               --build-arg NEXT_PUBLIC_SITE_URL="${COIL_APP_NEXT_PUBLIC_SITE_URL}" \
               --build-arg NEXT_PUBLIC_APP_URL="${COIL_APP_NEXT_PUBLIC_APP_URL}" \
+              --build-arg NEXT_PUBLIC_BUILD_VERSION="${BUILD_VERSION}" \
               .
 
             # Blue/green deploy — app uses ports 3000 (blue) and 3002 (green)
