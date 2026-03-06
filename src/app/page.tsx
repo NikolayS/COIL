@@ -862,6 +862,8 @@ export default function CoilApp() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const weekDataRef = useRef(weekData);
+  weekDataRef.current = weekData;
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -996,6 +998,8 @@ export default function CoilApp() {
     if (!user) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
+      const latestData = weekDataRef.current;
+      if (!latestData) return;
       setSaveStatus("saving");
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
@@ -1004,7 +1008,7 @@ export default function CoilApp() {
         setSaveError("Timed out");
         setTimeout(() => setSaveStatus("idle"), 3000);
       }, 10000);
-      syncCurrentToSupabase(user.id, weekData, controller.signal, weekOffset !== 0).then((err) => {
+      syncCurrentToSupabase(user.id, latestData, controller.signal, weekOffset !== 0).then((err) => {
         clearTimeout(timeoutId);
         if (controller.signal.aborted) return;
         if (err) {
