@@ -109,6 +109,9 @@ jobs:
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='week_start') THEN
                 ALTER TABLE public.settings ADD COLUMN week_start text DEFAULT 'monday';
               END IF;
+              IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='notes') THEN
+                ALTER TABLE public.settings ADD COLUMN notes text DEFAULT '';
+              END IF;
             END $body$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
