@@ -342,8 +342,16 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
   const pages = doc.getPages();
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i];
-    p.drawText(`COIL — coil.5am.team  ·  Page ${i + 1} of ${pages.length}`, {
+    const version = process.env.NEXT_PUBLIC_BUILD_VERSION || "dev";
+    const generated = new Date().toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+    const left = `COIL — coil.5am.team  ·  Page ${i + 1} of ${pages.length}`;
+    const right = `${version}  ·  ${generated}`;
+    p.drawText(left, {
       x: MARGIN, y: 20, font: fontRegular, size: 8, color: COLORS.mid,
+    });
+    const rightWidth = fontRegular.widthOfTextAtSize(right, 7);
+    p.drawText(right, {
+      x: p.getWidth() - MARGIN - rightWidth, y: 20, font: fontRegular, size: 7, color: COLORS.mid,
     });
   }
 
