@@ -463,9 +463,35 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
+  const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
 
   const dayData = data.days[activeDay] ?? emptyDayData();
   const weeklyDrinks = calcWeekDrinks(data);
+
+  // How many days ago is a given day key (on the current week)?
+  const daysAgo = (dayKey: string): number => {
+    const dayOrder = weekStart === "sunday"
+      ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+      : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const todayIdx = dayOrder.indexOf(todayKey);
+    const dayIdx = dayOrder.indexOf(dayKey);
+    // weekOffset=0 is current week; each -1 is 7 more days ago
+    return (todayIdx - dayIdx) + (-weekOffset * 7);
+  };
+
+  const isDayProtected = (dayKey: string): boolean => {
+    const ago = daysAgo(dayKey);
+    return ago >= 2; // yesterday and today are fine; 2+ days ago needs confirmation
+  };
+
+  const handleDaySelect = (dayKey: string) => {
+    if (isDayProtected(dayKey) && !editUnlocked[dayKey]) {
+      const ago = daysAgo(dayKey);
+      if (!confirm(`This was ${ago} days ago. Edit anyway?`)) return;
+      setEditUnlocked(prev => ({ ...prev, [dayKey]: true }));
+    }
+    setActiveDay(dayKey);
+  };
 
   const updateDay = useCallback(
     (patch: Partial<DayData>) => {
@@ -495,7 +521,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
           return (
             <button
               key={day}
-              onClick={() => setActiveDay(day)}
+              onClick={() => handleDaySelect(day)}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
                 backgroundColor: isActive ? "var(--gold-bg)" : "transparent",
@@ -514,7 +540,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
               >
                 {score}
               </span>
-              {isToday && <span className="w-1 h-1 rounded-full" style={{backgroundColor: 'var(--gold)'}} />}
+              {isToday && weekOffset < 0 && <span className="w-1 h-1 rounded-full" style={{backgroundColor: 'var(--gold)'}} />}
             </button>
           );
         })}
