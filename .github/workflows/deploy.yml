@@ -225,6 +225,15 @@ jobs:
               /etc/nginx/sites-enabled/coil
             sudo nginx -t && sudo nginx -s reload
 
+            # Copy previous build's static chunks into new container so stale
+            # HTML (cached by browsers) can still load old JS bundles
+            docker cp coil:/app/.next/static /tmp/_prev_static 2>/dev/null || true
+            if [ -d /tmp/_prev_static ]; then
+              docker cp /tmp/_prev_static/. coil-new:/app/.next/static/
+              rm -rf /tmp/_prev_static
+              echo "Merged previous static assets into new container"
+            fi
+
             # Cut over: stop old container, promote coil-new → coil
             docker stop coil || true
             docker rm coil || true
