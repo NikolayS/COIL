@@ -42,6 +42,15 @@ export default function RootLayout({
                 : t;
               document.documentElement.setAttribute('data-theme', resolved);
             })();
+            (function() {
+              try {
+                fetch('/api/version',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
+                  var k='coil_version',prev=localStorage.getItem(k);
+                  localStorage.setItem(k,d.v);
+                  if(prev&&prev!==d.v){location.reload()}
+                }).catch(function(){});
+              } catch(e){}
+            })();
           `
         }} />
       </head>

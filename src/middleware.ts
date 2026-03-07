@@ -10,7 +10,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/auth/callback") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
-    request.nextUrl.pathname.startsWith("/api/email");
+    request.nextUrl.pathname.startsWith("/api/email") ||
+    request.nextUrl.pathname.startsWith("/api/version");
 
   if (isDemo || publicPaths) {
     return NextResponse.next({ request });
