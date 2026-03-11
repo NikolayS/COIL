@@ -443,13 +443,40 @@ function JournalField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  // Use local state to avoid React 19 controlled textarea thrashing.
+  // Parent value syncs in on external changes (day switch, load);
+  // local edits propagate to parent via debounced onChange.
+  const [local, setLocal] = useState(value);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync from parent when value changes externally (day switch, data load)
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value;
+    setLocal(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onChangeRef.current(v), 300);
+  };
+
+  // Flush on blur so we never lose the last few chars
+  const handleBlur = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onChangeRef.current(local);
+  };
+
   return (
     <div>
       <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-2">{label}</p>
       <textarea
         rows={3}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={local}
+        onChange={handleInput}
+        onBlur={handleBlur}
         placeholder={placeholder}
         className="w-full bg-[--bg-input] border border-[--border] rounded-xl px-4 py-3 text-[15px] text-[--text] placeholder-[--text-faint] focus:outline-none focus:border-[--gold-border] transition-colors"
       />
