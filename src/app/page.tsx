@@ -933,6 +933,7 @@ export default function CoilApp() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncAbort = useRef<AbortController | null>(null);
   const weekDataRef = useRef(weekData);
   weekDataRef.current = weekData;
 
@@ -1071,8 +1072,11 @@ export default function CoilApp() {
     syncTimer.current = setTimeout(() => {
       const latestData = weekDataRef.current;
       if (!latestData) return;
-      setSaveStatus("saving");
+      // Abort any in-flight save before starting a new one
+      if (syncAbort.current) syncAbort.current.abort();
       const controller = new AbortController();
+      syncAbort.current = controller;
+      setSaveStatus("saving");
       const timeoutId = setTimeout(() => {
         controller.abort();
         setSaveStatus("timeout");
@@ -1102,6 +1106,13 @@ export default function CoilApp() {
             });
           }
         }
+      }).catch((e) => {
+        clearTimeout(timeoutId);
+        if (controller.signal.aborted) return;
+        console.error("Autosave failed:", e);
+        setSaveError(String(e));
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus("idle"), 4000);
       });
     }, 1500);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
