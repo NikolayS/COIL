@@ -33,6 +33,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
+        {/* Next.js emits mobile-web-app-capable (Chrome Android) instead of
+            apple-mobile-web-app-capable (iOS Safari). Add it explicitly so
+            "Add to Home Screen" on iOS opens in standalone mode, not Safari. */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
