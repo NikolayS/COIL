@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download } from "lucide-react";
+import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
@@ -743,7 +743,36 @@ function ExportTab({
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedPlain, setCopiedPlain] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const report = generateReport(data);
+
+  const handleSendEmail = async () => {
+    if (!user) return;
+    setEmailSending(true);
+    setEmailResult(null);
+    setEmailError(null);
+    try {
+      const res = await fetch("/api/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, weekChoice: "current", includePdf: true }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setEmailResult(`Sent to ${json.email}`);
+        setTimeout(() => setEmailResult(null), 4000);
+      } else {
+        setEmailError(json.error || "Failed to send");
+        setTimeout(() => setEmailError(null), 4000);
+      }
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : "Failed to send");
+      setTimeout(() => setEmailError(null), 4000);
+    }
+    setEmailSending(false);
+  };
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(report);
@@ -807,6 +836,25 @@ function ExportTab({
             <Download size={16} />
             Download PDF
           </button>
+        )}
+        {user && (
+          <div className="mt-2">
+            <button
+              onClick={handleSendEmail}
+              disabled={emailSending}
+              className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
+            >
+              <Mail size={16} />
+              {emailSending ? "Sending…" : "Send Email"}
+            </button>
+            {emailResult && (
+              <p className="text-center text-xs font-mono text-[--text-faint] mt-1.5">{emailResult}</p>
+            )}
+            {emailError && (
+              <p className="text-center text-xs font-mono mt-1.5" style={{ color: "var(--error, #e55)" }}>{emailError}</p>
+            )}
+          </div>
         )}
       </div>
 
