@@ -757,7 +757,7 @@ function ExportTab({
       const res = await fetch("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, includePdf: true }),
+        body: JSON.stringify({ userId: user.id, weekOf: new Date(data.weekOf).toISOString().slice(0, 10), includePdf: true }),
       });
       const json = await res.json();
       if (res.ok) {

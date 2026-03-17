@@ -14,7 +14,7 @@ function getMondayOfWeek(date: Date): Date {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { userId, overrideEmail, weekChoice, includePdf } = body as { userId: string; overrideEmail?: string | null; weekChoice?: "current" | "previous"; includePdf?: boolean };
+  const { userId, overrideEmail, weekOf, weekChoice, includePdf } = body as { userId: string; overrideEmail?: string | null; weekOf?: string; weekChoice?: "current" | "previous"; includePdf?: boolean };
 
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
@@ -48,8 +48,10 @@ export async function POST(request: NextRequest) {
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   ).toISOString().slice(0, 10);
 
-  // Use weekChoice if provided, otherwise try current then previous
-  const mondaysToTry = weekChoice === "previous"
+  // Use explicit weekOf if provided, otherwise fall back to weekChoice, then current→previous
+  const mondaysToTry = weekOf
+    ? [weekOf]
+    : weekChoice === "previous"
     ? [prevMonday]
     : weekChoice === "current"
     ? [currentMonday]
