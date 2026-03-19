@@ -120,9 +120,7 @@ settings (user_id PK,
 ### 1. Web Push Notifications
 Design agreed: push when available, email as fallback, user-configurable in Settings.
 
-VAPID keys already generated (do NOT regenerate):
-- Public: `BMrc-5cyF8riiUQnh7CXc5IZgk4P0bukvYZHdGGUMNaxpVdzcyncRd-EzFdd26AvTIg7Yhraoo37wCxjr_WWf2Q`
-- Private: `REDACTED`
+VAPID keys already generated (do NOT regenerate). Keys are stored securely — ask Nik for access.
 - Add to `/opt/coil/.env.local` on server as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`
 
 Needs to build:
