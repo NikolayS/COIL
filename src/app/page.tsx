@@ -1339,6 +1339,7 @@ export default function CoilApp() {
       <div className="text-center py-2">
         <span className="text-[9px] font-mono text-[--text-faint] opacity-40">
           {process.env.NEXT_PUBLIC_BUILD_VERSION || "dev"}
+          {process.env.NEXT_PUBLIC_GIT_BRANCH ? ` · ${process.env.NEXT_PUBLIC_GIT_BRANCH}` : ""}
         </span>
       </div>
 
