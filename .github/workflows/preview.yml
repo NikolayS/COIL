@@ -1,0 +1,84 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
+          docker build \
+            --build-arg NEXT_PUBLIC_GIT_BRANCH="${{ github.head_ref }}" \
+            -t "coil-preview-${SAFE_BRANCH}:latest" \
+            --output type=docker,dest=/tmp/preview-image.tar .
+
+      - name: Copy image to server
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
+          scp -i /tmp/deploy_key -o StrictHostKeyChecking=no \
+            /tmp/preview-image.tar \
+            deploy@178.156.188.200:/tmp/coil-preview-${SAFE_BRANCH}.tar
+
+      - name: Deploy preview
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 "
+            docker load -i /tmp/coil-preview-${SAFE_BRANCH}.tar
+            rm /tmp/coil-preview-${SAFE_BRANCH}.tar
+            /opt/coil/deploy-preview.sh '${{ github.head_ref }}' 'coil-preview-${SAFE_BRANCH}:latest'
+          "
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const safeBranch = branch.replace(/[/_]/g, '-').toLowerCase().slice(0, 30);
+            const url = `https://coil-${safeBranch}.5am.team`;
+            const body = `🔍 **Preview deployed:** ${url}\n\nUpdates automatically on each push.`;
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.data.find(c => c.body.includes('Preview deployed'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  destroy-preview:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy preview
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
+            "/opt/coil/destroy-preview.sh '${{ github.head_ref }}'"
