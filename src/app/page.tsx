@@ -1219,26 +1219,15 @@ export default function CoilApp() {
             <div className="flex items-center gap-2">
 
 
-              {user ? (
-                <a
-                  href="/settings"
-                  title="Settings"
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                  aria-label="Settings"
-                >
-                  <Settings size={14} />
-                </a>
-              ) : (
-                <span
-                  title="Sign in to access settings"
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)", opacity:0.35, cursor:"not-allowed"}}
-                  aria-label="Settings (sign in required)"
-                >
-                  <Settings size={14} />
-                </span>
-              )}
+              <a
+                href="/settings"
+                title="Settings"
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
+                aria-label="Settings"
+              >
+                <Settings size={14} />
+              </a>
               <button
                 onClick={handleSignOut}
                 title={user ? `Signed in as ${user.email}` : "Demo mode"}
