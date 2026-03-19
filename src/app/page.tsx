@@ -969,6 +969,7 @@ export default function CoilApp() {
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
@@ -992,10 +993,17 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", resolved);
   };
 
+  const applyPalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
+    document.documentElement.setAttribute("data-palette", p);
+  };
+
   useEffect(() => {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
     applyTheme(saved);
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
+    setPalette(savedPalette);
+    applyPalette(savedPalette);
 
     // Keep system theme in sync with OS changes
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1209,35 +1217,17 @@ export default function CoilApp() {
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="flex items-center gap-2">
-              <button
-                onClick={toggleTheme}
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+
+
+              <a
+                href="/settings"
+                title="Settings"
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                aria-label={`Theme: ${theme} (click to cycle)`}
-                title={`Theme: ${theme}`}
+                aria-label="Settings"
               >
-                {theme === "dark" ? <Moon size={14} /> : theme === "light" ? <Sun size={14} /> : <Monitor size={14} />}
-              </button>
-              {user ? (
-                <a
-                  href="/settings"
-                  title="Settings"
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                  aria-label="Settings"
-                >
-                  <Settings size={14} />
-                </a>
-              ) : (
-                <span
-                  title="Sign in to access settings"
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)", opacity:0.35, cursor:"not-allowed"}}
-                  aria-label="Settings (sign in required)"
-                >
-                  <Settings size={14} />
-                </span>
-              )}
+                <Settings size={14} />
+              </a>
               <button
                 onClick={handleSignOut}
                 title={user ? `Signed in as ${user.email}` : "Demo mode"}

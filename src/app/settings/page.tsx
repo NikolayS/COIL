@@ -5,7 +5,7 @@
 // alter table settings add column if not exists report_email text;
 
 import { useState, useEffect, useMemo, Suspense } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -48,6 +48,48 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 function SettingsInner() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // ── Appearance (theme + palette) — local only, not saved to Supabase ──
+  const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
+
+  const applyTheme = (t: "dark" | "light" | "system") => {
+    const resolved = t === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : t;
+    document.documentElement.setAttribute("data-theme", resolved);
+  };
+
+  const applyPalette = (p: string) => {
+    document.documentElement.setAttribute("data-palette", p);
+  };
+
+  useEffect(() => {
+    const savedTheme = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
+    setTheme(savedTheme);
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
+    setPalette(savedPalette);
+  }, []);
+
+  const handleTheme = (t: "dark" | "light" | "system") => {
+    setTheme(t);
+    applyTheme(t);
+    localStorage.setItem("coil_theme", t);
+  };
+
+  const handlePalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
+    setPalette(p);
+    applyPalette(p);
+    localStorage.setItem("coil_palette", p);
+  };
+
+  const PALETTES: { id: "gold" | "ocean" | "midnight" | "ember" | "iron"; label: string; darkBg: string; lightBg: string; darkAccent: string; lightAccent: string }[] = [
+    { id: "gold",     label: "Gold",     darkBg: "#1a1a18", lightBg: "#f5f2ec", darkAccent: "#c9a84c", lightAccent: "#9a7230" },
+    { id: "ocean",    label: "Ocean",    darkBg: "#0a1628", lightBg: "#d6e8f5", darkAccent: "#38b2e0", lightAccent: "#0e6fa0" },
+    { id: "midnight", label: "Midnight", darkBg: "#100c1e", lightBg: "#e0d8f8", darkAccent: "#a78bfa", lightAccent: "#5b21b6" },
+    { id: "ember",    label: "Ember",    darkBg: "#160a06", lightBg: "#f5ede8", darkAccent: "#c24b2a", lightAccent: "#b03a1e" },
+    { id: "iron",     label: "Iron",     darkBg: "#0e1014", lightBg: "#e8ecf2", darkAccent: "#8a9bb0", lightAccent: "#4a6080" },
+  ];
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -76,7 +118,8 @@ function SettingsInner() {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) {
-        window.location.href = "/login";
+        // Demo mode: allow access to Appearance settings, skip all Supabase-backed fields
+        setLoading(false);
         return;
       }
       setUser(user);
@@ -195,6 +238,128 @@ function SettingsInner() {
         </div>
 
         <div className="space-y-6">
+          {/* ── Appearance card ── */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-5">
+            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Appearance</p>
+
+            {/* Mode toggle */}
+            <div>
+              <p className="text-xs text-[--text-dim] mb-2">Mode</p>
+              <div
+                className="flex rounded-xl overflow-hidden"
+                style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg)" }}
+              >
+                {([
+                  { value: "dark",   label: "Dark",   icon: <Moon size={12} /> },
+                  { value: "system", label: "Auto",   icon: <Monitor size={12} /> },
+                  { value: "light",  label: "Light",  icon: <Sun size={12} /> },
+                ] as const).map((opt, i) => {
+                  const isActive = theme === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleTheme(opt.value)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-mono transition-all duration-200"
+                      style={{
+                        backgroundColor: isActive ? "var(--gold-bg)" : "transparent",
+                        color: isActive ? "var(--gold)" : "var(--text-muted)",
+                        borderRight: i < 2 ? "1px solid var(--border)" : "none",
+                        fontWeight: isActive ? 600 : 400,
+                      }}
+                    >
+                      {opt.icon}
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Theme swatches */}
+            <div>
+              <p className="text-xs text-[--text-dim] mb-3">Color theme</p>
+              <div className="flex gap-3">
+                {PALETTES.map((p) => {
+                  const isActive = palette === p.id;
+                  const isDark = theme === "dark" || (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+                  const bgColor = isDark ? p.darkBg : p.lightBg;
+                  const accentColor = isDark ? p.darkAccent : p.lightAccent;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handlePalette(p.id)}
+                      aria-label={p.label}
+                      aria-pressed={isActive}
+                      title={p.label}
+                      className="flex flex-col items-center gap-1.5 flex-1 transition-all duration-200"
+                    >
+                      {/* Swatch */}
+                      <div
+                        className="w-full rounded-xl transition-all duration-200 relative overflow-hidden"
+                        style={{
+                          height: 44,
+                          backgroundColor: bgColor,
+                          border: isActive
+                            ? `2px solid ${accentColor}`
+                            : "2px solid transparent",
+                          boxShadow: isActive ? `0 0 0 1px ${accentColor}40` : "none",
+                          outline: isActive ? "none" : `1px solid var(--border)`,
+                          outlineOffset: "-1px",
+                        }}
+                      >
+                        {/* Accent stripe at bottom */}
+                        <div
+                          className="absolute bottom-0 left-0 right-0"
+                          style={{ height: 6, backgroundColor: accentColor, opacity: 0.9 }}
+                        />
+                        {/* Mini dot in center */}
+                        <div
+                          className="absolute top-1/2 left-1/2 rounded-full"
+                          style={{
+                            width: 8,
+                            height: 8,
+                            backgroundColor: accentColor,
+                            transform: "translate(-50%, -60%)",
+                            opacity: 0.7,
+                          }}
+                        />
+                      </div>
+                      {/* Label */}
+                      <span
+                        className="text-[10px] font-mono tracking-wide"
+                        style={{
+                          color: isActive ? "var(--gold)" : "var(--text-faint)",
+                          fontWeight: isActive ? 600 : 400,
+                        }}
+                      >
+                        {p.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Auth-required sections — hidden in demo mode */}
+          {!user && (
+            <div
+              className="rounded-2xl p-5 border text-center space-y-2"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-card)" }}
+            >
+              <p className="text-sm font-mono text-[--text-muted]">Sign in to access email reports, reminders, and sync settings.</p>
+              <a
+                href="/login"
+                className="inline-block mt-2 px-5 py-2.5 rounded-xl text-xs font-mono tracking-[0.1em] uppercase font-medium transition-all duration-200"
+                style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
+              >
+                Sign in
+              </a>
+            </div>
+          )}
+
+          {user && (<>
+
           {/* Weekly email card */}
           <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
             <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Weekly Email Report</p>
@@ -475,6 +640,8 @@ function SettingsInner() {
           >
             {saving ? "Saving..." : saved ? "Saved!" : "Save Settings"}
           </button>
+
+          </>)} {/* end auth-required sections */}
         </div>
       </div>
     </div>
