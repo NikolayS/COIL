@@ -118,7 +118,8 @@ function SettingsInner() {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) {
-        window.location.href = "/login";
+        // Demo mode: allow access to Appearance settings, skip all Supabase-backed fields
+        setLoading(false);
         return;
       }
       setUser(user);
@@ -339,6 +340,25 @@ function SettingsInner() {
               </div>
             </div>
           </div>
+
+          {/* Auth-required sections — hidden in demo mode */}
+          {!user && (
+            <div
+              className="rounded-2xl p-5 border text-center space-y-2"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-card)" }}
+            >
+              <p className="text-sm font-mono text-[--text-muted]">Sign in to access email reports, reminders, and sync settings.</p>
+              <a
+                href="/login"
+                className="inline-block mt-2 px-5 py-2.5 rounded-xl text-xs font-mono tracking-[0.1em] uppercase font-medium transition-all duration-200"
+                style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
+              >
+                Sign in
+              </a>
+            </div>
+          )}
+
+          {user && (<>
 
           {/* Weekly email card */}
           <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
@@ -620,6 +640,8 @@ function SettingsInner() {
           >
             {saving ? "Saving..." : saved ? "Saved!" : "Save Settings"}
           </button>
+
+          </>)} {/* end auth-required sections */}
         </div>
       </div>
     </div>
