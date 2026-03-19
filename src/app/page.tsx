@@ -969,7 +969,7 @@ export default function CoilApp() {
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [palette, setPalette] = useState<"gold" | "ocean" | "forest">("gold");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
@@ -993,7 +993,7 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", resolved);
   };
 
-  const applyPalette = (p: "gold" | "ocean" | "forest") => {
+  const applyPalette = (p: "gold" | "ocean" | "midnight") => {
     document.documentElement.setAttribute("data-palette", p);
   };
 
@@ -1001,7 +1001,7 @@ export default function CoilApp() {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
     applyTheme(saved);
-    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "forest") || "gold";
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight") || "gold";
     setPalette(savedPalette);
     applyPalette(savedPalette);
 
@@ -1219,29 +1219,43 @@ export default function CoilApp() {
             <div className="flex items-center gap-2">
               {/* Palette picker */}
               <div
-                className="flex items-center gap-1 px-2 h-10 rounded-full flex-shrink-0"
+                className="flex items-center h-10 rounded-full flex-shrink-0 overflow-hidden"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)"}}
-                title="Accent color"
+                role="group"
+                aria-label="Color theme"
               >
-                {(["gold", "ocean", "forest"] as const).map((p) => {
-                  const color = p === "gold" ? "#c9a84c" : p === "ocean" ? "#4a9ec9" : "#5aaa6b";
-                  const isActive = palette === p;
+                {([
+                  { id: "gold",     label: "Gold",     bg: "#c9a84c", ring: "#c9a84c" },
+                  { id: "ocean",    label: "Ocean",    bg: "#38b2e0", ring: "#38b2e0" },
+                  { id: "midnight", label: "Midnight", bg: "#a78bfa", ring: "#a78bfa" },
+                ] as const).map((p, i) => {
+                  const isActive = palette === p.id;
                   return (
                     <button
-                      key={p}
-                      onClick={() => { setPalette(p); applyPalette(p); localStorage.setItem("coil_palette", p); }}
-                      aria-label={`${p} accent`}
-                      title={p.charAt(0).toUpperCase() + p.slice(1)}
-                      className="rounded-full flex-shrink-0 transition-transform"
+                      key={p.id}
+                      onClick={() => { setPalette(p.id); applyPalette(p.id); localStorage.setItem("coil_palette", p.id); }}
+                      aria-label={`${p.label} theme`}
+                      aria-pressed={isActive}
+                      title={p.label}
+                      className="relative flex items-center justify-center flex-shrink-0 transition-all duration-200"
                       style={{
-                        width: isActive ? 14 : 10,
-                        height: isActive ? 14 : 10,
-                        backgroundColor: color,
-                        outline: isActive ? `2px solid ${color}` : "none",
-                        outlineOffset: 2,
-                        transform: isActive ? "scale(1)" : "scale(0.9)",
+                        width: isActive ? 44 : 32,
+                        height: 40,
+                        backgroundColor: isActive ? `${p.bg}18` : "transparent",
+                        borderRight: i < 2 ? "1px solid var(--border)" : "none",
                       }}
-                    />
+                    >
+                      <span
+                        className="rounded-full transition-all duration-200"
+                        style={{
+                          width: isActive ? 12 : 8,
+                          height: isActive ? 12 : 8,
+                          backgroundColor: p.bg,
+                          boxShadow: isActive ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${p.ring}` : "none",
+                          display: "block",
+                        }}
+                      />
+                    </button>
                   );
                 })}
               </div>

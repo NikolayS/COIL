@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ── Dark theme (default) ── */
+/* ── Gold theme — dark (default) ── */
 :root, [data-theme="dark"] {
   --gold: #c9a84c;
   --gold-dim: #8a6f2e;
@@ -40,7 +40,7 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
 }
 
-/* ── Light theme ── */
+/* ── Gold theme — light ── */
 [data-theme="light"] {
   --gold: #9a7230;
   --gold-dim: #c9a84c;
@@ -80,41 +80,170 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
 }
 
-/* ── Ocean palette (overrides --gold* accent only) ── */
-/* Must come after theme rules and use html[] to win specificity */
-html[data-palette="ocean"] {
-  --gold: #4a9ec9;
-  --gold-dim: #2d6f94;
-  --gold-bg: rgba(74, 158, 201, 0.08);
-  --gold-bg-hover: rgba(74, 158, 201, 0.14);
-  --gold-border: rgba(74, 158, 201, 0.25);
-  --gold-border-strong: rgba(74, 158, 201, 0.4);
-}
-html[data-palette="ocean"][data-theme="light"] {
-  --gold: #1d6fa0;
-  --gold-dim: #4a9ec9;
-  --gold-bg: rgba(29, 111, 160, 0.08);
-  --gold-bg-hover: rgba(29, 111, 160, 0.14);
-  --gold-border: rgba(29, 111, 160, 0.25);
-  --gold-border-strong: rgba(29, 111, 160, 0.4);
+/* ══════════════════════════════════════════════════════════════
+   OCEAN THEME — deep navy, premium analytics dashboard feel
+   ══════════════════════════════════════════════════════════════ */
+
+html[data-palette="ocean"][data-theme="dark"],
+html[data-palette="ocean"]:not([data-theme="light"]) {
+  --gold: #38b2e0;
+  --gold-dim: #1a7aaa;
+  --gold-bg: rgba(56, 178, 224, 0.08);
+  --gold-bg-hover: rgba(56, 178, 224, 0.14);
+  --gold-border: rgba(56, 178, 224, 0.22);
+  --gold-border-strong: rgba(56, 178, 224, 0.38);
+  --bg: #080f1a;
+  --bg-card: #0e1825;
+  --bg-card-hover: #142030;
+  --bg-input: #0b1520;
+  --bg-elevated: #162234;
+  --border: #1c2e40;
+  --border-subtle: #132030;
+  --text: #d8eaf5;
+  --text-secondary: #8ab4cc;
+  --text-muted: #567a90;
+  --text-dim: #405f72;
+  --text-faint: #2c4455;
+
+  --self: #3aaa72;
+  --self-bg: rgba(58, 170, 114, 0.1);
+  --self-border: rgba(58, 170, 114, 0.25);
+  --health: #e05555;
+  --health-bg: rgba(224, 85, 85, 0.1);
+  --health-border: rgba(224, 85, 85, 0.25);
+  --relationships: #e09040;
+  --relationships-bg: rgba(224, 144, 64, 0.1);
+  --relationships-border: rgba(224, 144, 64, 0.25);
+  --wealth: #38b2e0;
+  --wealth-bg: rgba(56, 178, 224, 0.1);
+  --wealth-border: rgba(56, 178, 224, 0.25);
+  --business: #9070e8;
+  --business-bg: rgba(144, 112, 232, 0.1);
+  --business-border: rgba(144, 112, 232, 0.25);
+
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.4);
 }
 
-/* ── Forest palette (overrides --gold* accent only) ── */
-html[data-palette="forest"] {
-  --gold: #5aaa6b;
-  --gold-dim: #357a44;
-  --gold-bg: rgba(90, 170, 107, 0.08);
-  --gold-bg-hover: rgba(90, 170, 107, 0.14);
-  --gold-border: rgba(90, 170, 107, 0.25);
-  --gold-border-strong: rgba(90, 170, 107, 0.4);
+html[data-palette="ocean"][data-theme="light"] {
+  --gold: #0e6fa0;
+  --gold-dim: #38b2e0;
+  --gold-bg: rgba(14, 111, 160, 0.07);
+  --gold-bg-hover: rgba(14, 111, 160, 0.13);
+  --gold-border: rgba(14, 111, 160, 0.22);
+  --gold-border-strong: rgba(14, 111, 160, 0.38);
+  --bg: #edf4fa;
+  --bg-card: #ffffff;
+  --bg-card-hover: #e4eff7;
+  --bg-input: #ddeaf4;
+  --bg-elevated: #ffffff;
+  --border: #b8d4e8;
+  --border-subtle: #cce0f0;
+  --text: #08121e;
+  --text-secondary: #1e4060;
+  --text-muted: #3a6080;
+  --text-dim: #6a90a8;
+  --text-faint: #9ab8cc;
+
+  --self: #1a7a50;
+  --self-bg: rgba(26, 122, 80, 0.08);
+  --self-border: rgba(26, 122, 80, 0.2);
+  --health: #b02828;
+  --health-bg: rgba(176, 40, 40, 0.08);
+  --health-border: rgba(176, 40, 40, 0.2);
+  --relationships: #a85818;
+  --relationships-bg: rgba(168, 88, 24, 0.08);
+  --relationships-border: rgba(168, 88, 24, 0.2);
+  --wealth: #0e6fa0;
+  --wealth-bg: rgba(14, 111, 160, 0.08);
+  --wealth-border: rgba(14, 111, 160, 0.2);
+  --business: #5830b8;
+  --business-bg: rgba(88, 48, 184, 0.08);
+  --business-border: rgba(88, 48, 184, 0.2);
+
+  --shadow-card: 0 1px 4px rgba(0,20,40,0.1), 0 1px 2px rgba(0,20,40,0.06);
 }
-html[data-palette="forest"][data-theme="light"] {
-  --gold: #2d7a3d;
-  --gold-dim: #5aaa6b;
-  --gold-bg: rgba(45, 122, 61, 0.08);
-  --gold-bg-hover: rgba(45, 122, 61, 0.14);
-  --gold-border: rgba(45, 122, 61, 0.25);
-  --gold-border-strong: rgba(45, 122, 61, 0.4);
+
+/* ══════════════════════════════════════════════════════════════
+   MIDNIGHT THEME — near-black with violet, minimal & sharp
+   ══════════════════════════════════════════════════════════════ */
+
+html[data-palette="midnight"][data-theme="dark"],
+html[data-palette="midnight"]:not([data-theme="light"]) {
+  --gold: #a78bfa;
+  --gold-dim: #6d4fc0;
+  --gold-bg: rgba(167, 139, 250, 0.08);
+  --gold-bg-hover: rgba(167, 139, 250, 0.14);
+  --gold-border: rgba(167, 139, 250, 0.22);
+  --gold-border-strong: rgba(167, 139, 250, 0.38);
+  --bg: #08080c;
+  --bg-card: #111118;
+  --bg-card-hover: #181820;
+  --bg-input: #0e0e14;
+  --bg-elevated: #1a1a24;
+  --border: #222230;
+  --border-subtle: #191924;
+  --text: #eae8f8;
+  --text-secondary: #a8a0cc;
+  --text-muted: #6860a0;
+  --text-dim: #504880;
+  --text-faint: #383060;
+
+  --self: #44bb80;
+  --self-bg: rgba(68, 187, 128, 0.1);
+  --self-border: rgba(68, 187, 128, 0.25);
+  --health: #e06060;
+  --health-bg: rgba(224, 96, 96, 0.1);
+  --health-border: rgba(224, 96, 96, 0.25);
+  --relationships: #d4906a;
+  --relationships-bg: rgba(212, 144, 106, 0.1);
+  --relationships-border: rgba(212, 144, 106, 0.25);
+  --wealth: #6090e8;
+  --wealth-bg: rgba(96, 144, 232, 0.1);
+  --wealth-border: rgba(96, 144, 232, 0.25);
+  --business: #a78bfa;
+  --business-bg: rgba(167, 139, 250, 0.1);
+  --business-border: rgba(167, 139, 250, 0.25);
+
+  --shadow-card: 0 2px 12px rgba(0,0,0,0.6), 0 1px 4px rgba(0,0,0,0.5);
+}
+
+html[data-palette="midnight"][data-theme="light"] {
+  --gold: #5b21b6;
+  --gold-dim: #a78bfa;
+  --gold-bg: rgba(91, 33, 182, 0.07);
+  --gold-bg-hover: rgba(91, 33, 182, 0.13);
+  --gold-border: rgba(91, 33, 182, 0.2);
+  --gold-border-strong: rgba(91, 33, 182, 0.35);
+  --bg: #f2f0f8;
+  --bg-card: #ffffff;
+  --bg-card-hover: #eae6f8;
+  --bg-input: #e6e0f4;
+  --bg-elevated: #ffffff;
+  --border: #ccc4e8;
+  --border-subtle: #ddd8f0;
+  --text: #0c0a14;
+  --text-secondary: #2c2048;
+  --text-muted: #5040a0;
+  --text-dim: #7868b8;
+  --text-faint: #a098cc;
+
+  --self: #186840;
+  --self-bg: rgba(24, 104, 64, 0.08);
+  --self-border: rgba(24, 104, 64, 0.2);
+  --health: #a83030;
+  --health-bg: rgba(168, 48, 48, 0.08);
+  --health-border: rgba(168, 48, 48, 0.2);
+  --relationships: #904020;
+  --relationships-bg: rgba(144, 64, 32, 0.08);
+  --relationships-border: rgba(144, 64, 32, 0.2);
+  --wealth: #1840a0;
+  --wealth-bg: rgba(24, 64, 160, 0.08);
+  --wealth-border: rgba(24, 64, 160, 0.2);
+  --business: #5b21b6;
+  --business-bg: rgba(91, 33, 182, 0.08);
+  --business-border: rgba(91, 33, 182, 0.2);
+
+  --shadow-card: 0 1px 4px rgba(20,0,40,0.1), 0 1px 2px rgba(20,0,40,0.06);
 }
 
 * {
@@ -260,4 +389,9 @@ textarea {
 .empty-state-icon {
   color: var(--text-faint);
   opacity: 0.5;
+}
+
+/* ── Theme transition (smooth bg swap on palette change) ── */
+html {
+  transition: background-color 0.35s ease;
 }
