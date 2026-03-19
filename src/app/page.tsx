@@ -1207,7 +1207,7 @@ export default function CoilApp() {
         <div className="px-5 md:px-8 pt-8 pb-4">
           {/* Row 1: Logo + action buttons */}
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL 🧪</h1>
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
