@@ -22,6 +22,7 @@ jobs:
             --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY }}" \
             --build-arg NEXT_PUBLIC_SITE_URL="${{ secrets.COIL_APP_NEXT_PUBLIC_SITE_URL }}" \
             --build-arg NEXT_PUBLIC_APP_URL="${{ secrets.COIL_APP_NEXT_PUBLIC_APP_URL }}" \
+            --build-arg NEXT_PUBLIC_BUILD_VERSION="preview-${GITHUB_SHA::7}" \
             --build-arg NEXT_PUBLIC_GIT_BRANCH="${{ github.head_ref }}" \
             -t "coil-preview-${SAFE_BRANCH}:latest" .
           docker save "coil-preview-${SAFE_BRANCH}:latest" -o /tmp/preview-image.tar
