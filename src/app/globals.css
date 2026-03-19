@@ -246,6 +246,172 @@ html[data-palette="midnight"][data-theme="light"] {
   --shadow-card: 0 1px 4px rgba(20,0,40,0.1), 0 1px 2px rgba(20,0,40,0.06);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   EMBER THEME — smoldering charcoal with red-orange, aggression + discipline
+   ══════════════════════════════════════════════════════════════ */
+
+html[data-palette="ember"][data-theme="dark"],
+html[data-palette="ember"]:not([data-theme="light"]) {
+  --gold: #c24b2a;
+  --gold-dim: #8a2e14;
+  --gold-bg: rgba(194, 75, 42, 0.08);
+  --gold-bg-hover: rgba(194, 75, 42, 0.14);
+  --gold-border: rgba(194, 75, 42, 0.25);
+  --gold-border-strong: rgba(194, 75, 42, 0.42);
+  --bg: #160a06;
+  --bg-card: #201008;
+  --bg-card-hover: #2a1610;
+  --bg-input: #1a0c07;
+  --bg-elevated: #2e1a10;
+  --border: #3a1c0e;
+  --border-subtle: #2a1409;
+  --text: #f0e0d0;
+  --text-secondary: #c4a090;
+  --text-muted: #886050;
+  --text-dim: #6a4838;
+  --text-faint: #4a3028;
+
+  --self: #4aaa70;
+  --self-bg: rgba(74, 170, 112, 0.1);
+  --self-border: rgba(74, 170, 112, 0.25);
+  --health: #e05050;
+  --health-bg: rgba(224, 80, 80, 0.1);
+  --health-border: rgba(224, 80, 80, 0.25);
+  --relationships: #c24b2a;
+  --relationships-bg: rgba(194, 75, 42, 0.1);
+  --relationships-border: rgba(194, 75, 42, 0.25);
+  --wealth: #5080c8;
+  --wealth-bg: rgba(80, 128, 200, 0.1);
+  --wealth-border: rgba(80, 128, 200, 0.25);
+  --business: #9060d8;
+  --business-bg: rgba(144, 96, 216, 0.1);
+  --business-border: rgba(144, 96, 216, 0.25);
+
+  --shadow-card: 0 2px 10px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.4);
+}
+
+html[data-palette="ember"][data-theme="light"] {
+  --gold: #b03a1e;
+  --gold-dim: #c24b2a;
+  --gold-bg: rgba(176, 58, 30, 0.07);
+  --gold-bg-hover: rgba(176, 58, 30, 0.13);
+  --gold-border: rgba(176, 58, 30, 0.22);
+  --gold-border-strong: rgba(176, 58, 30, 0.38);
+  --bg: #f5ede8;
+  --bg-card: #fff8f5;
+  --bg-card-hover: #ede0d8;
+  --bg-input: #e8d4c8;
+  --bg-elevated: #fffaf8;
+  --border: #d4a898;
+  --border-subtle: #e4c0b0;
+  --text: #1a0a06;
+  --text-secondary: #4a2018;
+  --text-muted: #805040;
+  --text-dim: #a07060;
+  --text-faint: #c09080;
+
+  --self: #1a7040;
+  --self-bg: rgba(26, 112, 64, 0.08);
+  --self-border: rgba(26, 112, 64, 0.2);
+  --health: #aa2828;
+  --health-bg: rgba(170, 40, 40, 0.08);
+  --health-border: rgba(170, 40, 40, 0.2);
+  --relationships: #b03a1e;
+  --relationships-bg: rgba(176, 58, 30, 0.08);
+  --relationships-border: rgba(176, 58, 30, 0.2);
+  --wealth: #2850a0;
+  --wealth-bg: rgba(40, 80, 160, 0.08);
+  --wealth-border: rgba(40, 80, 160, 0.2);
+  --business: #6030c0;
+  --business-bg: rgba(96, 48, 192, 0.08);
+  --business-border: rgba(96, 48, 192, 0.2);
+
+  --shadow-card: 0 1px 4px rgba(40,10,0,0.1), 0 1px 2px rgba(40,10,0,0.06);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IRON THEME — near-black with cool steel-blue, surgical precision + stoicism
+   ══════════════════════════════════════════════════════════════ */
+
+html[data-palette="iron"][data-theme="dark"],
+html[data-palette="iron"]:not([data-theme="light"]) {
+  --gold: #8a9bb0;
+  --gold-dim: #5a6878;
+  --gold-bg: rgba(138, 155, 176, 0.08);
+  --gold-bg-hover: rgba(138, 155, 176, 0.14);
+  --gold-border: rgba(138, 155, 176, 0.22);
+  --gold-border-strong: rgba(138, 155, 176, 0.38);
+  --bg: #0e1014;
+  --bg-card: #161a20;
+  --bg-card-hover: #1e242c;
+  --bg-input: #121620;
+  --bg-elevated: #202830;
+  --border: #242c38;
+  --border-subtle: #1a2028;
+  --text: #dce4f0;
+  --text-secondary: #98a8bc;
+  --text-muted: #5a6878;
+  --text-dim: #485060;
+  --text-faint: #343c48;
+
+  --self: #3aaa72;
+  --self-bg: rgba(58, 170, 114, 0.1);
+  --self-border: rgba(58, 170, 114, 0.25);
+  --health: #d05858;
+  --health-bg: rgba(208, 88, 88, 0.1);
+  --health-border: rgba(208, 88, 88, 0.25);
+  --relationships: #c09050;
+  --relationships-bg: rgba(192, 144, 80, 0.1);
+  --relationships-border: rgba(192, 144, 80, 0.25);
+  --wealth: #8a9bb0;
+  --wealth-bg: rgba(138, 155, 176, 0.1);
+  --wealth-border: rgba(138, 155, 176, 0.25);
+  --business: #8878d0;
+  --business-bg: rgba(136, 120, 208, 0.1);
+  --business-border: rgba(136, 120, 208, 0.25);
+
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.35);
+}
+
+html[data-palette="iron"][data-theme="light"] {
+  --gold: #4a6080;
+  --gold-dim: #8a9bb0;
+  --gold-bg: rgba(74, 96, 128, 0.07);
+  --gold-bg-hover: rgba(74, 96, 128, 0.13);
+  --gold-border: rgba(74, 96, 128, 0.2);
+  --gold-border-strong: rgba(74, 96, 128, 0.36);
+  --bg: #e8ecf2;
+  --bg-card: #f4f6fa;
+  --bg-card-hover: #dde2ec;
+  --bg-input: #d8dde8;
+  --bg-elevated: #f8fafc;
+  --border: #aab4c8;
+  --border-subtle: #c0c8d8;
+  --text: #0c1018;
+  --text-secondary: #283040;
+  --text-muted: #485868;
+  --text-dim: #6878a0;
+  --text-faint: #8898b8;
+
+  --self: #1a7848;
+  --self-bg: rgba(26, 120, 72, 0.08);
+  --self-border: rgba(26, 120, 72, 0.2);
+  --health: #a03030;
+  --health-bg: rgba(160, 48, 48, 0.08);
+  --health-border: rgba(160, 48, 48, 0.2);
+  --relationships: #906030;
+  --relationships-bg: rgba(144, 96, 48, 0.08);
+  --relationships-border: rgba(144, 96, 48, 0.2);
+  --wealth: #2a4870;
+  --wealth-bg: rgba(42, 72, 112, 0.08);
+  --wealth-border: rgba(42, 72, 112, 0.2);
+  --business: #5040a8;
+  --business-bg: rgba(80, 64, 168, 0.08);
+  --business-border: rgba(80, 64, 168, 0.2);
+
+  --shadow-card: 0 1px 4px rgba(0,10,20,0.1), 0 1px 2px rgba(0,10,20,0.06);
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;

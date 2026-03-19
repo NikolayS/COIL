@@ -969,7 +969,7 @@ export default function CoilApp() {
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight">("gold");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
@@ -993,7 +993,7 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", resolved);
   };
 
-  const applyPalette = (p: "gold" | "ocean" | "midnight") => {
+  const applyPalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
     document.documentElement.setAttribute("data-palette", p);
   };
 
@@ -1001,7 +1001,7 @@ export default function CoilApp() {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
     applyTheme(saved);
-    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight") || "gold";
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
     setPalette(savedPalette);
     applyPalette(savedPalette);
 
@@ -1217,57 +1217,8 @@ export default function CoilApp() {
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="flex items-center gap-2">
-              {/* Palette picker */}
-              <div
-                className="flex items-center h-10 rounded-full flex-shrink-0 overflow-hidden"
-                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)"}}
-                role="group"
-                aria-label="Color theme"
-              >
-                {([
-                  { id: "gold",     label: "Gold",     bg: "#c9a84c", ring: "#c9a84c" },
-                  { id: "ocean",    label: "Ocean",    bg: "#38b2e0", ring: "#38b2e0" },
-                  { id: "midnight", label: "Midnight", bg: "#a78bfa", ring: "#a78bfa" },
-                ] as const).map((p, i) => {
-                  const isActive = palette === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => { setPalette(p.id); applyPalette(p.id); localStorage.setItem("coil_palette", p.id); }}
-                      aria-label={`${p.label} theme`}
-                      aria-pressed={isActive}
-                      title={p.label}
-                      className="relative flex items-center justify-center flex-shrink-0 transition-all duration-200"
-                      style={{
-                        width: isActive ? 44 : 32,
-                        height: 40,
-                        backgroundColor: isActive ? `${p.bg}18` : "transparent",
-                        borderRight: i < 2 ? "1px solid var(--border)" : "none",
-                      }}
-                    >
-                      <span
-                        className="rounded-full transition-all duration-200"
-                        style={{
-                          width: isActive ? 12 : 8,
-                          height: isActive ? 12 : 8,
-                          backgroundColor: p.bg,
-                          boxShadow: isActive ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${p.ring}` : "none",
-                          display: "block",
-                        }}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                onClick={toggleTheme}
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
-                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
-                aria-label={`Theme: ${theme} (click to cycle)`}
-                title={`Theme: ${theme}`}
-              >
-                {theme === "dark" ? <Moon size={14} /> : theme === "light" ? <Sun size={14} /> : <Monitor size={14} />}
-              </button>
+
+
               {user ? (
                 <a
                   href="/settings"
