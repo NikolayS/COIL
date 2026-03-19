@@ -11,16 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
           docker build \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="${{ secrets.COIL_APP_NEXT_PUBLIC_SUPABASE_URL }}" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY }}" \
+            --build-arg NEXT_PUBLIC_SITE_URL="${{ secrets.COIL_APP_NEXT_PUBLIC_SITE_URL }}" \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ secrets.COIL_APP_NEXT_PUBLIC_APP_URL }}" \
             --build-arg NEXT_PUBLIC_GIT_BRANCH="${{ github.head_ref }}" \
-            -t "coil-preview-${SAFE_BRANCH}:latest" \
-            --output type=docker,dest=/tmp/preview-image.tar .
+            -t "coil-preview-${SAFE_BRANCH}:latest" .
+          docker save "coil-preview-${SAFE_BRANCH}:latest" -o /tmp/preview-image.tar
 
       - name: Copy image to server
         run: |
