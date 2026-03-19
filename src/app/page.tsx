@@ -969,6 +969,7 @@ export default function CoilApp() {
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "forest">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   // null = loading (auth check pending); WeekData = ready
@@ -992,10 +993,17 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", resolved);
   };
 
+  const applyPalette = (p: "gold" | "ocean" | "forest") => {
+    document.documentElement.setAttribute("data-palette", p);
+  };
+
   useEffect(() => {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
     applyTheme(saved);
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "forest") || "gold";
+    setPalette(savedPalette);
+    applyPalette(savedPalette);
 
     // Keep system theme in sync with OS changes
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1209,6 +1217,34 @@ export default function CoilApp() {
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-3xl font-bold tracking-tight" style={{color: "var(--gold)"}}>COIL</h1>
             <div className="flex items-center gap-2">
+              {/* Palette picker */}
+              <div
+                className="flex items-center gap-1 px-2 h-10 rounded-full flex-shrink-0"
+                style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)"}}
+                title="Accent color"
+              >
+                {(["gold", "ocean", "forest"] as const).map((p) => {
+                  const color = p === "gold" ? "#c9a84c" : p === "ocean" ? "#4a9ec9" : "#5aaa6b";
+                  const isActive = palette === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => { setPalette(p); applyPalette(p); localStorage.setItem("coil_palette", p); }}
+                      aria-label={`${p} accent`}
+                      title={p.charAt(0).toUpperCase() + p.slice(1)}
+                      className="rounded-full flex-shrink-0 transition-transform"
+                      style={{
+                        width: isActive ? 14 : 10,
+                        height: isActive ? 14 : 10,
+                        backgroundColor: color,
+                        outline: isActive ? `2px solid ${color}` : "none",
+                        outlineOffset: 2,
+                        transform: isActive ? "scale(1)" : "scale(0.9)",
+                      }}
+                    />
+                  );
+                })}
+              </div>
               <button
                 onClick={toggleTheme}
                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"

@@ -47,6 +47,10 @@ export default function RootLayout({
               document.documentElement.setAttribute('data-theme', resolved);
             })();
             (function() {
+              var p = localStorage.getItem('coil_palette') || 'gold';
+              document.documentElement.setAttribute('data-palette', p);
+            })();
+            (function() {
               try {
                 fetch('/api/version',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
                   var k='coil_version',prev=localStorage.getItem(k);
