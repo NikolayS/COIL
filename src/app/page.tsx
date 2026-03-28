@@ -50,11 +50,11 @@ interface ArchivedWeek {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const TERRITORIES: { key: TerritoryKey; label: string; color: string; textColor: string }[] = [
-  { key: "self", label: "Self", color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
-  { key: "health", label: "Health", color: "#c85555", textColor: "text-[#c85555]" },
+  { key: "self",          label: "Self",          color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
+  { key: "health",        label: "Health",        color: "#c85555", textColor: "text-[#c85555]" },
+  { key: "wealth",        label: "Wealth",        color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
   { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
-  { key: "wealth", label: "Wealth", color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
-  { key: "business", label: "Business", color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
+  { key: "business",      label: "Business",      color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
 ];
 
 const WOLF_MODES: { key: WolfMode; label: string }[] = [
