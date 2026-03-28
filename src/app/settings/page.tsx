@@ -3,9 +3,20 @@
 // NOTE: Run Supabase migration:
 // alter table settings add column if not exists weekly_email_day text default 'sunday';
 // alter table settings add column if not exists report_email text;
+// alter table settings add column if not exists territory_order text default 'self,health,wealth,relationships,business';
 
 import { useState, useEffect, useMemo, Suspense } from "react";
-import { ArrowLeft, Sun, Moon, Monitor } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, ChevronUp, ChevronDown } from "lucide-react";
+
+type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
+const DEFAULT_TERRITORY_ORDER: TerritoryKey[] = ["self", "health", "wealth", "relationships", "business"];
+const TERRITORY_META: Record<TerritoryKey, { label: string; color: string }> = {
+  self:          { label: "Self",          color: "#4a9e6b" },
+  health:        { label: "Health",        color: "#c85555" },
+  wealth:        { label: "Wealth",        color: "#4a7fc1" },
+  relationships: { label: "Relationships", color: "#c9873a" },
+  business:      { label: "Business",      color: "#8b5cf6" },
+};
 import { createClient } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -94,6 +105,16 @@ function SettingsInner() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [territoryOrder, setTerritoryOrder] = useState<TerritoryKey[]>(DEFAULT_TERRITORY_ORDER);
+
+  const moveTeritory = (index: number, dir: -1 | 1) => {
+    const next = [...territoryOrder];
+    const swap = index + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[index], next[swap]] = [next[swap], next[index]];
+    setTerritoryOrder(next);
+  };
+
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [emailPdf, setEmailPdf] = useState(true);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
@@ -146,6 +167,12 @@ function SettingsInner() {
         // saved timezone wins over browser detection; fall back to browser if not saved
         setTimezone(data.timezone || browserTz);
         setReportEmail(data.report_email ?? user.email ?? "");
+        if (data.territory_order) {
+          const parsed = data.territory_order.split(",").filter((k: string) =>
+            ["self","health","relationships","wealth","business"].includes(k)
+          ) as TerritoryKey[];
+          if (parsed.length === 5) setTerritoryOrder(parsed);
+        }
       } else {
         // New user — use browser timezone and auth email as defaults
         setTimezone(browserTz);
@@ -173,6 +200,7 @@ function SettingsInner() {
         reminder2_hour: reminder2Hour,
         report_email: reportEmail || user.email,
         timezone,
+        territory_order: territoryOrder.join(","),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -622,6 +650,49 @@ function SettingsInner() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Territory order card */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
+            <div>
+              <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Territory Order</p>
+              <p className="text-xs text-[--text-faint] mt-1">Drag order shown in Daily view</p>
+            </div>
+            <div className="space-y-1.5">
+              {territoryOrder.map((key, i) => {
+                const meta = TERRITORY_META[key];
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between rounded-xl px-3 py-2.5 border"
+                    style={{ backgroundColor: "var(--bg)", borderColor: "var(--border)" }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: meta.color }} />
+                      <span className="text-sm font-mono text-[--text]">{meta.label}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => moveTeritory(i, -1)}
+                        disabled={i === 0}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-20"
+                        style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+                      >
+                        <ChevronUp size={13} />
+                      </button>
+                      <button
+                        onClick={() => moveTeritory(i, 1)}
+                        disabled={i === territoryOrder.length - 1}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-20"
+                        style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+                      >
+                        <ChevronDown size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

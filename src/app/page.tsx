@@ -5,13 +5,14 @@ import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
+import AnalyticsTab from "./analytics-tab";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
-type TabKey = "daily" | "weekly" | "export" | "past";
+type TabKey = "daily" | "weekly" | "export" | "past" | "analytics";
 
 interface DayData {
   territories: Record<TerritoryKey, boolean>;
@@ -49,11 +50,11 @@ interface ArchivedWeek {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const TERRITORIES: { key: TerritoryKey; label: string; color: string; textColor: string }[] = [
-  { key: "self", label: "Self", color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
-  { key: "health", label: "Health", color: "#c85555", textColor: "text-[#c85555]" },
+  { key: "self",          label: "Self",          color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
+  { key: "health",        label: "Health",        color: "#c85555", textColor: "text-[#c85555]" },
+  { key: "wealth",        label: "Wealth",        color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
   { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
-  { key: "wealth", label: "Wealth", color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
-  { key: "business", label: "Business", color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
+  { key: "business",      label: "Business",      color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
 ];
 
 const WOLF_MODES: { key: WolfMode; label: string }[] = [
@@ -486,7 +487,8 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday", territoryOrder = TERRITORIES.map(t => t.key) }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; weekOffset?: number; weekStart?: "monday" | "sunday"; territoryOrder?: TerritoryKey[] }) {
+  const orderedTerritories = territoryOrder.map(k => TERRITORIES.find(t => t.key === k)!).filter(Boolean);
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
@@ -595,7 +597,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
 
       {/* Territories */}
       <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
-        {TERRITORIES.map((t) => (
+        {orderedTerritories.map((t) => (
           <TerritoryRow
             key={t.key}
             territory={t}
@@ -652,7 +654,8 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   );
 }
 
-function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; onArchive: () => void; onReset: () => void }) {
+function WeeklyTab({ data, onChange, onArchive, onReset, territoryOrder = TERRITORIES.map(t => t.key) }: { data: WeekData; onChange: (d: WeekData) => void; onArchive: () => void; onReset: () => void; territoryOrder?: TerritoryKey[] }) {
+  const orderedTerritories = territoryOrder.map(k => TERRITORIES.find(t => t.key === k)!).filter(Boolean);
   const weeklyDrinks = calcWeekDrinks(data);
 
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
@@ -677,7 +680,7 @@ function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onC
       {/* Territory breakdown */}
       <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Territory Breakdown</p>
-        {TERRITORIES.map((t) => {
+        {orderedTerritories.map((t) => {
           const score = calcTerritoryScore(data, t.key);
           const pct = (score / 7) * 100;
           return (
@@ -950,6 +953,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "weekly", label: "Weekly" },
   { key: "export", label: "Export" },
   { key: "past", label: "Past Weeks" },
+  { key: "analytics", label: "Analytics" },
 ];
 
 export default function CoilApp() {
@@ -972,6 +976,9 @@ export default function CoilApp() {
   const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
+  const [territoryOrder, setTerritoryOrder] = useState<TerritoryKey[]>(
+    TERRITORIES.map(t => t.key)
+  );
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
@@ -1037,11 +1044,17 @@ export default function CoilApp() {
         const supabaseClient = createClient();
         const { data: settingsData } = await supabaseClient
           .from("settings")
-          .select("week_start")
+          .select("week_start, territory_order")
           .eq("user_id", user.id)
           .maybeSingle();
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
+        if (settingsData?.territory_order) {
+          const parsed = settingsData.territory_order.split(",").filter((k: string) =>
+            TERRITORIES.some(t => t.key === k)
+          ) as TerritoryKey[];
+          if (parsed.length === 5) setTerritoryOrder(parsed);
+        }
         const [remoteWeek, remoteArchive] = await Promise.all([
           fetchCurrentFromSupabase(user.id, initOffset, ws),
           fetchArchiveFromSupabase(user.id),
@@ -1311,16 +1324,19 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "daily" && (
-            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} weekStart={weekStart} />
+            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} weekStart={weekStart} territoryOrder={territoryOrder} />
           )}
           {activeTab === "weekly" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} onArchive={handleArchive} onReset={handleReset} />
+            <WeeklyTab data={weekData} onChange={setWeekData} onArchive={handleArchive} onReset={handleReset} territoryOrder={territoryOrder} />
           )}
           {activeTab === "export" && (
             <ExportTab data={weekData} user={user} />
           )}
           {activeTab === "past" && (
             <PastWeeksTab archive={archive} />
+          )}
+          {activeTab === "analytics" && (
+            <AnalyticsTab currentWeek={weekData} archive={archive} />
           )}
         </div>
       </div>
