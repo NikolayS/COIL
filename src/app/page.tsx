@@ -5,13 +5,14 @@ import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
 import type { User } from "@supabase/supabase-js";
+import AnalyticsTab from "./analytics-tab";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
-type TabKey = "daily" | "weekly" | "export" | "past";
+type TabKey = "daily" | "weekly" | "export" | "past" | "analytics";
 
 interface DayData {
   territories: Record<TerritoryKey, boolean>;
@@ -950,6 +951,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "weekly", label: "Weekly" },
   { key: "export", label: "Export" },
   { key: "past", label: "Past Weeks" },
+  { key: "analytics", label: "Analytics" },
 ];
 
 export default function CoilApp() {
@@ -1321,6 +1323,9 @@ export default function CoilApp() {
           )}
           {activeTab === "past" && (
             <PastWeeksTab archive={archive} />
+          )}
+          {activeTab === "analytics" && (
+            <AnalyticsTab currentWeek={weekData} archive={archive} />
           )}
         </div>
       </div>
