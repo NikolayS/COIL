@@ -23,13 +23,13 @@ interface RouteBody {
 const MINIMAL_WEEK_DATA = {
   weekOf: "2025-01-06T00:00:00.000Z",
   days: {
-    mon: { territories: { self: true, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    tue: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    wed: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    thu: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    fri: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    sat: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
-    sun: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, journal: "", reflection: "" },
+    mon: { territories: { self: true, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    tue: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    wed: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    thu: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    fri: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    sat: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
+    sun: { territories: { self: false, health: false, relationships: false, wealth: false, business: false }, wolf: [], drinks: 0, bagels: 0, journal: "", reflection: "" },
   },
   weekly: { wins: "", gratitude: "", lessons: "", focusAchieved: "", focusNext: "", stretchNext: "", onTrack: "", cupOverflowing: "", improve: "" },
 };

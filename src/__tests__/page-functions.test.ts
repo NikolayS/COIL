@@ -20,6 +20,7 @@ interface DayData {
   territories: Record<TerritoryKey, boolean>;
   wolf: WolfModes;
   drinks: number;
+  bagels?: number;
   journal: string;
   reflection: string;
 }
@@ -58,6 +59,7 @@ function emptyDayData(): DayData {
     territories: { self: false, health: false, relationships: false, wealth: false, business: false },
     wolf: [],
     drinks: 0,
+    bagels: 0,
     journal: "",
     reflection: "",
   };
@@ -87,7 +89,7 @@ function migrateWeekData(data: WeekData): WeekData {
   const days = Object.fromEntries(
     Object.entries(data.days).map(([k, d]) => [
       k,
-      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [] },
+      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [], bagels: d.bagels ?? 0 },
     ])
   );
   return { ...data, days };
@@ -107,6 +109,7 @@ function dayWith(territories: Partial<Record<TerritoryKey, boolean>>): DayData {
     },
     wolf: [],
     drinks: 0,
+    bagels: 0,
     journal: "",
     reflection: "",
   };
@@ -437,6 +440,15 @@ describe("migrateWeekData", () => {
     expect(result.days.mon.drinks).toBe(3);
     expect(result.days.mon.journal).toBe("great day");
     expect(result.days.mon.territories.self).toBe(true);
+  });
+
+
+
+  it("backfills missing bagels to 0", () => {
+    const data = makeBaseWeek({ mon: "wise" });
+    delete data.days.mon.bagels;
+    const result = migrateWeekData(data);
+    expect(result.days.mon.bagels).toBe(0);
   });
 
   it("preserves weekOf and weekly fields", () => {
