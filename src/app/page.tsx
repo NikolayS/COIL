@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
@@ -17,6 +17,7 @@ interface DayData {
   territories: Record<TerritoryKey, boolean>;
   wolf: WolfModes;
   drinks: number;
+  bagels: number;
   gratitude: string;
   wins: string;
   journal: string;
@@ -105,6 +106,7 @@ function emptyDayData(): DayData {
     territories: { self: false, health: false, relationships: false, wealth: false, business: false },
     wolf: [],
     drinks: 0,
+    bagels: 0,
     gratitude: "",
     wins: "",
     journal: "",
@@ -140,6 +142,17 @@ function calcWeekDrinks(data: WeekData): number {
   return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
 }
 
+function calcWeekBagels(data: WeekData): number {
+  return DAYS.reduce((sum, d) => sum + (data.days[d]?.bagels ?? 0), 0);
+}
+
+function bagelComment(today: number, weeklyTotal: number): string | null {
+  if (today > 1 && weeklyTotal > 3) return "Bakery operating at suspiciously high throughput.";
+  if (today > 1) return "Two bagels in one day. Someone found the good bakery.";
+  if (weeklyTotal > 3) return "More than three this week. Respectfully: calm down, Casanova.";
+  return null;
+}
+
 // ── Storage ────────────────────────────────────────────────────────────────
 // Demo/guest mode: localStorage only.
 // Authenticated mode: Supabase only — localStorage never touched.
@@ -155,6 +168,7 @@ function migrateWeekData(data: WeekData): WeekData {
       {
         ...d,
         wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [],
+        bagels: d.bagels ?? 0,
         gratitude: d.gratitude ?? "",
         wins: d.wins ?? "",
       },
@@ -389,46 +403,78 @@ function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfMo
   );
 }
 
-function DrinkCounter({
+function CountCounter({
+  label,
   value,
   weeklyTotal,
   onChange,
+  weeklyNote,
+  comment,
 }: {
+  label: string;
   value: number;
   weeklyTotal: number;
   onChange: (v: number) => void;
+  weeklyNote?: (weeklyTotal: number) => ReactNode;
+  comment?: string | null;
 }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">🥃 Drinks Today</p>
-      <div className="flex items-center justify-between bg-[--bg-card] rounded-xl px-4 py-3 border border-[--border]">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => onChange(Math.max(0, value - 1))}
-            className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
-          >
-            <Minus size={14} className="text-[--text-muted]" />
-          </button>
-          <span className="font-mono text-2xl font-medium w-8 text-center" style={{color:"var(--gold)"}}>{value}</span>
-          <button
-            onClick={() => onChange(value + 1)}
-            className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
-          >
-            <Plus size={14} className="text-[--text-muted]" />
-          </button>
+      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">{label}</p>
+      <div className="bg-[--bg-card] rounded-xl px-4 py-3 border border-[--border] space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              aria-label={`Decrease ${label}`}
+              onClick={() => onChange(Math.max(0, value - 1))}
+              className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <Minus size={14} className="text-[--text-muted]" />
+            </button>
+            <span className="font-mono text-2xl font-medium w-8 text-center" style={{color:"var(--gold)"}}>{value}</span>
+            <button
+              aria-label={`Increase ${label}`}
+              onClick={() => onChange(value + 1)}
+              className="w-11 h-11 rounded-full bg-[--bg] border border-[--border] flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <Plus size={14} className="text-[--text-muted]" />
+            </button>
+          </div>
+          <span className="text-sm text-[--text-dim]">
+            {weeklyNote ? weeklyNote(weeklyTotal) : <>Weekly: {weeklyTotal}</>}
+          </span>
         </div>
-        <span className="text-sm text-[--text-dim]">
-          {weeklyTotal > 20
-            ? <>Weekly: {weeklyTotal} 🤨 sure about that?</>
-            : weeklyTotal > 14
-            ? <>Weekly: {weeklyTotal} 🍺🍺 rough week</>
-            : weeklyTotal > 7
-            ? <>Weekly: {weeklyTotal} 🥴 easy tiger</>
-            : <>Weekly: {weeklyTotal}</>
-          }
-        </span>
+        {comment && <p className="text-xs text-[--text-muted] italic">{comment}</p>}
       </div>
     </div>
+  );
+}
+
+function DrinkCounter(props: { value: number; weeklyTotal: number; onChange: (v: number) => void }) {
+  return (
+    <CountCounter
+      {...props}
+      label="🥃 Drinks Today"
+      weeklyNote={(weeklyTotal) =>
+        weeklyTotal > 20
+          ? <>Weekly: {weeklyTotal} 🤨 sure about that?</>
+          : weeklyTotal > 14
+          ? <>Weekly: {weeklyTotal} 🍺🍺 rough week</>
+          : weeklyTotal > 7
+          ? <>Weekly: {weeklyTotal} 🥴 easy tiger</>
+          : <>Weekly: {weeklyTotal}</>
+      }
+    />
+  );
+}
+
+function BagelCounter(props: { value: number; weeklyTotal: number; onChange: (v: number) => void }) {
+  return (
+    <CountCounter
+      {...props}
+      label="🥯 Bagels Today"
+      comment={bagelComment(props.value, props.weeklyTotal)}
+    />
   );
 }
 
@@ -494,6 +540,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
 
   const dayData = data.days[activeDay] ?? emptyDayData();
   const weeklyDrinks = calcWeekDrinks(data);
+  const weeklyBagels = calcWeekBagels(data);
 
   // How many days ago is a given day key?
   const daysAgo = (dayKey: string): number => {
@@ -619,6 +666,15 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
         />
       </div>
 
+      {/* Bagels */}
+      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+        <BagelCounter
+          value={dayData.bagels ?? 0}
+          weeklyTotal={weeklyBagels}
+          onChange={(bagels) => updateDay({ bagels })}
+        />
+      </div>
+
       {/* Gratitude & Wins */}
       <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
         <JournalField
@@ -654,6 +710,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
 
 function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; onArchive: () => void; onReset: () => void }) {
   const weeklyDrinks = calcWeekDrinks(data);
+  const weeklyBagels = calcWeekBagels(data);
 
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
@@ -696,6 +753,10 @@ function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onC
         <div className="pt-2 border-t border-[--border] flex items-center gap-2 text-sm">
           <span className="text-[--text-muted]">🥃 Drinks</span>
           <span className="font-mono text-[--text]">{weeklyDrinks} this week</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-[--text-muted]">🥯 Bagels</span>
+          <span className="font-mono text-[--text]">{weeklyBagels} this week</span>
         </div>
       </div>
 
@@ -1096,7 +1157,7 @@ export default function CoilApp() {
       const hasContent = calcScore(weekData) > 0 ||
         Object.values(weekData.weekly).some(v => v.trim() !== "") ||
         Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.drinks > 0 || d.gratitude.trim() !== "" || d.wins.trim() !== ""
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.gratitude.trim() !== "" || d.wins.trim() !== ""
         );
       if (hasContent) {
         const newArchive: ArchivedWeek[] = [

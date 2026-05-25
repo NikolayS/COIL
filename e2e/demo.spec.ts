@@ -122,27 +122,18 @@ test.describe("Demo mode — home page", () => {
 
   test("Settings button is visible in demo mode", async ({ page }) => {
     // Settings icon should be in the header
-    await expect(page.locator("[aria-label='Settings (sign in required)']")).toBeVisible();
+    await expect(page.getByRole("link", { name: /settings/i })).toBeVisible();
   });
 
-  test("Settings button is disabled (not-allowed cursor) in demo mode", async ({ page }) => {
-    const settingsEl = page.locator("[aria-label='Settings (sign in required)']");
+  test("Settings button links to /settings in demo mode", async ({ page }) => {
+    const settingsEl = page.getByRole("link", { name: /settings/i });
     await expect(settingsEl).toBeVisible();
-
-    // It's a <span>, not an <a>, so it should not be a link
-    const tagName = await settingsEl.evaluate((el) => el.tagName.toLowerCase());
-    expect(tagName).toBe("span");
-
-    // Should have cursor: not-allowed via inline style
-    const cursor = await settingsEl.evaluate((el) => (el as HTMLElement).style.cursor);
-    expect(cursor).toBe("not-allowed");
+    await expect(settingsEl).toHaveAttribute("href", "/settings");
   });
 
-  test("clicking the disabled settings span does NOT navigate", async ({ page }) => {
-    const settingsEl = page.locator("[aria-label='Settings (sign in required)']");
-    await settingsEl.click({ force: true }); // force past the non-interactive element
-    // Should NOT navigate to /settings
-    await expect(page).not.toHaveURL(/\/settings/);
+  test("clicking settings navigates to /settings", async ({ page }) => {
+    await page.getByRole("link", { name: /settings/i }).click();
+    await expect(page).toHaveURL(/\/settings/);
   });
 
   test("tab navigation works — can switch to Weekly tab", async ({ page }) => {

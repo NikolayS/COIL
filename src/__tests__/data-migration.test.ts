@@ -17,6 +17,7 @@ interface DayData {
   territories: Record<string, boolean>;
   wolf: WolfModes;
   drinks: number;
+  bagels?: number;
   journal: string;
   reflection: string;
 }
@@ -32,7 +33,7 @@ function migrateWeekData(data: WeekData): WeekData {
   const days = Object.fromEntries(
     Object.entries(data.days).map(([k, d]) => [
       k,
-      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [] },
+      { ...d, wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [], bagels: d.bagels ?? 0 },
     ])
   );
   return { ...data, days };
@@ -43,6 +44,7 @@ function makeDay(wolf: unknown): DayData {
     territories: { self: false, health: false, relationships: false, wealth: false, business: false },
     wolf: wolf as WolfModes,
     drinks: 0,
+    bagels: 0,
     journal: "",
     reflection: "",
   };
@@ -73,6 +75,15 @@ describe("wolf field migration", () => {
     const week = makeWeek({ mon: null });
     const result = migrateWeekData(week);
     expect(result.days.mon.wolf).toEqual([]);
+  });
+
+
+
+  it("backfills missing bagels to 0", () => {
+    const week = makeWeek({ mon: "wise" });
+    delete week.days.mon.bagels;
+    const result = migrateWeekData(week);
+    expect(result.days.mon.bagels).toBe(0);
   });
 
   it("converts undefined wolf to empty array", () => {

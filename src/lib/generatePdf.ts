@@ -203,33 +203,37 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
   }
   y -= ROW_H + 20;
 
-  // ── DRINKS ──
-  checkY(60);
-  drawText("Drinks", MARGIN, y, { bold: true, size: 12 });
-  y -= 16;
+  function drawCountTable(title: string, values: number[]) {
+    checkY(60);
+    drawText(title, MARGIN, y, { bold: true, size: 12 });
+    y -= 16;
 
-  const drinkColW = COL_W / 8;
-  page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.primary });
-  {
-    let x = MARGIN + 4;
-    for (const lbl of [...DAY_LABELS, "Total"]) {
-      page.drawText(lbl, { x, y: y + 2, font: fontBold, size: 9, color: COLORS.white });
-      x += drinkColW;
+    const countColW = COL_W / 8;
+    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.primary });
+    {
+      let x = MARGIN + 4;
+      for (const lbl of [...DAY_LABELS, "Total"]) {
+        page.drawText(lbl, { x, y: y + 2, font: fontBold, size: 9, color: COLORS.white });
+        x += countColW;
+      }
     }
-  }
-  y -= ROW_H;
+    y -= ROW_H;
 
-  const drinkVals = DAYS.map((d) => data.days[d]?.drinks ?? 0);
-  const totalDrinks = drinkVals.reduce((a, b) => a + b, 0);
-  page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.rowAlt });
-  {
-    let x = MARGIN + 4;
-    for (const v of [...drinkVals.map(String), String(totalDrinks)]) {
-      page.drawText(v, { x, y: y + 2, font: fontRegular, size: 9, color: COLORS.dark });
-      x += drinkColW;
+    const total = values.reduce((a, b) => a + b, 0);
+    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.rowAlt });
+    {
+      let x = MARGIN + 4;
+      for (const v of [...values.map(String), String(total)]) {
+        page.drawText(v, { x, y: y + 2, font: fontRegular, size: 9, color: COLORS.dark });
+        x += countColW;
+      }
     }
+    y -= ROW_H + 24;
   }
-  y -= ROW_H + 24;
+
+  // ── TRACKERS ──
+  drawCountTable("Drinks", DAYS.map((d) => data.days[d]?.drinks ?? 0));
+  drawCountTable("Bagels", DAYS.map((d) => data.days[d]?.bagels ?? 0));
 
   // ── DAILY JOURNAL ──
   checkY(40);

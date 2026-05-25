@@ -6,6 +6,7 @@ interface DayData {
   territories: Record<TerritoryKey, boolean>;
   wolf: string[];
   drinks: number;
+  bagels?: number;
   gratitude: string;
   wins: string;
   journal: string;
@@ -82,6 +83,10 @@ function calcWeekDrinks(data: WeekData): number {
   return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
 }
 
+function calcWeekBagels(data: WeekData): number {
+  return DAYS.reduce((sum, d) => sum + (data.days[d]?.bagels ?? 0), 0);
+}
+
 export function generatePlainReport(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
@@ -96,8 +101,10 @@ export function generatePlainReport(data: WeekData): string {
     return `${t.label} ${dots} ${s}/7`;
   });
   const totalDrinks = calcWeekDrinks(data);
+  const totalBagels = calcWeekBagels(data);
   const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}`);
+  const bagelStr = totalBagels > 0 ? ` | Bagels: ${totalBagels}` : "";
+  allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}${bagelStr}`);
 
   // Daily entries separated by " // "
   const dayParts: string[] = [];
@@ -143,12 +150,14 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   lines.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE}`);
   // Territory lines — one per territory
   const totalDrinks = calcWeekDrinks(data);
+  const totalBagels = calcWeekBagels(data);
   for (const t of TERRITORIES) {
     const s = calcTerritoryScore(data, t.key);
     const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join(" ");
     lines.push(`${t.label.padEnd(14)} ${dots}  ${s}/7`);
   }
   if (totalDrinks > 0) lines.push(`Drinks: ${totalDrinks}`);
+  if (totalBagels > 0) lines.push(`Bagels: ${totalBagels}`);
 
   // Daily entries — one line per day
   const dailyHtmlLines: string[] = []; // separate html for day entries (uses <h3>)
@@ -174,7 +183,7 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   const reflParts = weeklyLines(data.weekly);
   lines.push(reflParts.join("\n"));
 
-  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + 1;
+  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + (totalBagels > 0 ? 1 : 0) + 1;
   const headerLines = lines.slice(0, numTerrLines);
 
   const plain = lines.join("\n");
@@ -193,6 +202,7 @@ export function generateEmailHtml(data: WeekData): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const totalDrinks = calcWeekDrinks(data);
+  const totalBagels = calcWeekBagels(data);
   const w = data.weekly;
 
   const style = {
@@ -259,6 +269,7 @@ export function generateEmailHtml(data: WeekData): string {
       ${terrRows}${totalRow}
     </table>
     ${totalDrinks > 0 ? `<p style="margin:8px 0 0;font-size:13px;color:#888">Drinks this week: ${totalDrinks}</p>` : ""}
+    ${totalBagels > 0 ? `<p style="margin:4px 0 0;font-size:13px;color:#888">Bagels this week: ${totalBagels}</p>` : ""}
   </div>
 
   ${dayHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Daily Journal</h2>${dayHtml}</div>` : ""}
@@ -293,6 +304,12 @@ export function generateReport(data: WeekData): string {
   lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
   lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
   lines.push(``);
+  lines.push(`## Bagel Tracking 🥯`);
+  const bagelRow = DAYS.map((d) => data.days[d]?.bagels ?? 0).join(" | ");
+  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
+  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
+  lines.push(`| ${bagelRow} | **${calcWeekBagels(data)}** |`);
+  lines.push(``);
   lines.push(`## Daily Journal`);
   lines.push(``);
   for (const day of DAYS) {
@@ -301,6 +318,7 @@ export function generateReport(data: WeekData): string {
     lines.push(`### ${DAY_LABELS[day]}`);
     if (d.wolf?.length) lines.push(`**Wolf:** ${d.wolf.join(", ")}`);
     lines.push(`**Drinks:** ${d.drinks ?? 0}`);
+    lines.push(`**Bagels:** ${d.bagels ?? 0}`);
     if (d.gratitude) lines.push(`**Grateful:** ${d.gratitude}`);
     if (d.wins) lines.push(`**Wins:** ${d.wins}`);
     if (d.journal) lines.push(`**Notes:** ${d.journal}`);
