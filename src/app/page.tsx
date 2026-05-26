@@ -689,41 +689,31 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
         <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
       </div>
 
-      {/* Drinks */}
-      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+      {/* Trackers */}
+      <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
+        <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">Trackers</p>
         <DrinkCounter
           value={dayData.drinks}
           weeklyTotal={weeklyDrinks}
           onChange={(drinks) => updateDay({ drinks })}
         />
-      </div>
-
-      {/* Bagels */}
-      {trackerSettings.bagelsEnabled && (
-        <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+        {trackerSettings.bagelsEnabled && (
           <BagelCounter
             value={dayData.bagels ?? 0}
             weeklyTotal={weeklyBagels}
             onChange={(bagels) => updateDay({ bagels })}
           />
-        </div>
-      )}
-
-      {/* Optional boolean trackers */}
-      {BOOLEAN_TRACKERS.some((t) => trackerSettings[t.enabledKey]) && (
-        <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
-          <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">Trackers</p>
-          {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => (
-            <BooleanTrackerRow
-              key={t.key}
-              label={t.label}
-              emoji={t.emoji}
-              checked={Boolean(dayData[t.field])}
-              onToggle={() => updateDay({ [t.field]: !dayData[t.field] } as Partial<DayData>)}
-            />
-          ))}
-        </div>
-      )}
+        )}
+        {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => (
+          <BooleanTrackerRow
+            key={t.key}
+            label={t.label}
+            emoji={t.emoji}
+            checked={Boolean(dayData[t.field])}
+            onToggle={() => updateDay({ [t.field]: !dayData[t.field] } as Partial<DayData>)}
+          />
+        ))}
+      </div>
 
       {/* Gratitude & Wins */}
       <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
