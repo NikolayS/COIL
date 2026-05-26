@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
 import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerSettings } from "@/lib/tracking";
@@ -748,7 +748,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; onArchive: () => void; onReset: () => void }) {
+function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings }) {
   const weeklyDrinks = calcWeekDrinks(data);
   const weeklyBagels = calcWeekBagels(data);
 
@@ -821,27 +821,6 @@ function WeeklyTab({ data, onChange, trackerSettings, onArchive, onReset }: { da
           onChange={(v) => updateWeekly({ [key]: v })}
         />
       ))}
-      <div className="flex gap-2 pt-2">
-        <button
-          onClick={onArchive}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
-          style={{borderColor:"var(--self-border)", color:"var(--self)", backgroundColor:"transparent"}}
-          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--self-bg)")}
-          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
-        >
-          <Archive size={14} />
-          Archive & New Week
-        </button>
-        <button
-          onClick={onReset}
-          className="px-5 py-3.5 rounded-2xl border text-sm font-mono tracking-wide transition-all active:scale-[0.98]"
-          style={{borderColor:"var(--health-border)", color:"var(--health)", backgroundColor:"transparent"}}
-          onMouseEnter={e=>(e.currentTarget.style.backgroundColor="var(--health-bg)")}
-          onMouseLeave={e=>(e.currentTarget.style.backgroundColor="transparent")}
-        >
-          Reset
-        </button>
-      </div>
     </div>
   );
 }
@@ -1003,7 +982,7 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-[--text-dim] text-sm">No archived weeks yet.</p>
         <p className="text-[--text-faint] text-xs mt-2">
-          When you finish a week, go to Weekly → "Archive & New Week" to save it here.
+          Past weeks appear here automatically.
         </p>
       </div>
     );
@@ -1302,29 +1281,6 @@ export default function CoilApp() {
   const score = calcScore(weekData);
   const weekOf = formatWeekOf(new Date(weekData.weekOf));
 
-  const handleArchive = () => {
-    if (!confirm("Archive this week and start fresh? You won't be able to edit it after archiving.")) return;
-    const newArchive: ArchivedWeek[] = [
-      ...archive,
-      { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
-    ];
-    setArchive(newArchive);
-    if (isDemo) demoSaveArchive(newArchive);
-    if (user) archiveInSupabase(user.id, weekData);
-    const newWeek = emptyWeekData(getWeekStart(new Date(), weekStart));
-    setWeekData(newWeek);
-    if (isDemo) demoSaveCurrent(newWeek);
-    if (user) syncCurrentToSupabase(user.id, newWeek);
-    setActiveTab("daily");
-  };
-
-  const handleReset = () => {
-    if (!confirm("Reset all data for this week? This cannot be undone.")) return;
-    const fresh = emptyWeekData(getWeekStart(new Date(), weekStart));
-    setWeekData(fresh);
-    if (isDemo) demoSaveCurrent(fresh);
-  };
-
   return (
     <div className="min-h-screen bg-[--bg] flex flex-col">
       <div className="max-w-md md:max-w-lg lg:max-w-xl mx-auto w-full flex flex-col min-h-screen">
@@ -1431,7 +1387,7 @@ export default function CoilApp() {
             <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "weekly" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} onArchive={handleArchive} onReset={handleReset} />
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} />
           )}
           {activeTab === "export" && (
             <ExportTab data={weekData} user={user} trackerSettings={trackerSettings} />
