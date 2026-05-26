@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { generateReport, generateEmailHtml, type WeekData } from "@/lib/report";
 import { generateReportPdf } from "@/lib/generatePdf";
+import { trackerSettingsFromRow } from "@/lib/tracking";
 import { NextRequest, NextResponse } from "next/server";
 
 function getMondayOfWeek(date: Date): Date {
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   // Fetch all users with weekly email enabled
   const { data: settings, error: settingsError } = await supabase
     .from("settings")
-    .select("user_id, weekly_email_hour, week_start, report_email, timezone, email_pdf")
+    .select("user_id, weekly_email_hour, week_start, report_email, timezone, email_pdf, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("weekly_email_enabled", true);
 
   if (settingsError) {
@@ -85,13 +86,14 @@ export async function POST(request: NextRequest) {
     if (!weekRow?.data) continue;
 
     const weekData = weekRow.data as WeekData;
-    const report = generateReport(weekData);
+    const trackerSettings = trackerSettingsFromRow(setting);
+    const report = generateReport(weekData, trackerSettings);
 
     // Generate PDF attachment (only if user opted in)
     let pdfAttachment: { filename: string; content: string; type: string } | undefined;
     if (setting.email_pdf) {
       try {
-        const pdfBytes = await generateReportPdf(weekData);
+        const pdfBytes = await generateReportPdf(weekData, trackerSettings);
         pdfAttachment = {
           filename: `coil-report-${monday}.pdf`,
           content: Buffer.from(pdfBytes).toString("base64"),
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest) {
         to: [email],
         subject: `COIL Weekly Report — Week of ${monday}`,
         text: report,
-        html: generateEmailHtml(weekData),
+        html: generateEmailHtml(weekData, trackerSettings),
         attachments: pdfAttachment ? [pdfAttachment] : undefined,
       }),
     });

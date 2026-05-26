@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Copy, Check, Archive, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
+import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerSettings } from "@/lib/tracking";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -18,6 +19,9 @@ interface DayData {
   wolf: WolfModes;
   drinks: number;
   bagels: number;
+  steps10k: boolean;
+  coldPlunge: boolean;
+  fasting: boolean;
   gratitude: string;
   wins: string;
   journal: string;
@@ -107,6 +111,9 @@ function emptyDayData(): DayData {
     wolf: [],
     drinks: 0,
     bagels: 0,
+    steps10k: false,
+    coldPlunge: false,
+    fasting: false,
     gratitude: "",
     wins: "",
     journal: "",
@@ -169,6 +176,9 @@ function migrateWeekData(data: WeekData): WeekData {
         ...d,
         wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [],
         bagels: d.bagels ?? 0,
+        steps10k: d.steps10k ?? false,
+        coldPlunge: d.coldPlunge ?? false,
+        fasting: d.fasting ?? false,
         gratitude: d.gratitude ?? "",
         wins: d.wins ?? "",
       },
@@ -478,6 +488,28 @@ function BagelCounter(props: { value: number; weeklyTotal: number; onChange: (v:
   );
 }
 
+function BooleanTrackerRow({ label, emoji, checked, onToggle }: { label: string; emoji: string; checked: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
+      style={{ borderColor: checked ? "var(--gold-border)" : undefined }}
+    >
+      <span className="text-[15px] font-medium tracking-wide">{emoji} {label}</span>
+      <div
+        className="w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200"
+        style={{ borderColor: "var(--gold)", backgroundColor: checked ? "var(--gold)" : "transparent" }}
+      >
+        {checked && (
+          <svg className="check-icon" width="12" height="9" viewBox="0 0 12 9" fill="none">
+            <path d="M1 4L4.5 7.5L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
 function JournalField({
   label,
   placeholder,
@@ -532,7 +564,7 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
@@ -667,13 +699,31 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
       </div>
 
       {/* Bagels */}
-      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
-        <BagelCounter
-          value={dayData.bagels ?? 0}
-          weeklyTotal={weeklyBagels}
-          onChange={(bagels) => updateDay({ bagels })}
-        />
-      </div>
+      {trackerSettings.bagelsEnabled && (
+        <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
+          <BagelCounter
+            value={dayData.bagels ?? 0}
+            weeklyTotal={weeklyBagels}
+            onChange={(bagels) => updateDay({ bagels })}
+          />
+        </div>
+      )}
+
+      {/* Optional boolean trackers */}
+      {BOOLEAN_TRACKERS.some((t) => trackerSettings[t.enabledKey]) && (
+        <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
+          <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">Trackers</p>
+          {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => (
+            <BooleanTrackerRow
+              key={t.key}
+              label={t.label}
+              emoji={t.emoji}
+              checked={Boolean(dayData[t.field])}
+              onToggle={() => updateDay({ [t.field]: !dayData[t.field] } as Partial<DayData>)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Gratitude & Wins */}
       <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
@@ -708,7 +758,7 @@ function DailyTab({ data, onChange, weekOffset = 0, weekStart = "monday" }: { da
   );
 }
 
-function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; onArchive: () => void; onReset: () => void }) {
+function WeeklyTab({ data, onChange, trackerSettings, onArchive, onReset }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; onArchive: () => void; onReset: () => void }) {
   const weeklyDrinks = calcWeekDrinks(data);
   const weeklyBagels = calcWeekBagels(data);
 
@@ -754,10 +804,21 @@ function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onC
           <span className="text-[--text-muted]">🥃 Drinks</span>
           <span className="font-mono text-[--text]">{weeklyDrinks} this week</span>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-[--text-muted]">🥯 Bagels</span>
-          <span className="font-mono text-[--text]">{weeklyBagels} this week</span>
-        </div>
+        {trackerSettings.bagelsEnabled && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[--text-muted]">🥯 Bagels</span>
+            <span className="font-mono text-[--text]">{weeklyBagels} this week</span>
+          </div>
+        )}
+        {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => {
+          const total = DAYS.filter((day) => data.days[day]?.[t.field]).length;
+          return (
+            <div key={t.key} className="flex items-center gap-2 text-sm">
+              <span className="text-[--text-muted]">{t.emoji} {t.label}</span>
+              <span className="font-mono text-[--text]">{total}/7 achieved</span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Reflection questions */}
@@ -798,16 +859,18 @@ function WeeklyTab({ data, onChange, onArchive, onReset }: { data: WeekData; onC
 function ExportTab({
   data,
   user,
+  trackerSettings,
 }: {
   data: WeekData;
   user: User | null;
+  trackerSettings: TrackerSettings;
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedPlain, setCopiedPlain] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const report = generateReport(data);
+  const report = generateReport(data, trackerSettings);
 
   const handleSendEmail = async () => {
     if (!user) return;
@@ -842,7 +905,7 @@ function ExportTab({
   };
 
   const handleCopyPlain = async () => {
-    const { plain, html } = generatePlainReportHtml(data);
+    const { plain, html } = generatePlainReportHtml(data, trackerSettings);
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
@@ -1033,6 +1096,7 @@ export default function CoilApp() {
   const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
+  const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
@@ -1098,11 +1162,12 @@ export default function CoilApp() {
         const supabaseClient = createClient();
         const { data: settingsData } = await supabaseClient
           .from("settings")
-          .select("week_start")
+          .select("week_start, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
           .eq("user_id", user.id)
           .maybeSingle();
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
+        setTrackerSettings(trackerSettingsFromRow(settingsData));
         const [remoteWeek, remoteArchive] = await Promise.all([
           fetchCurrentFromSupabase(user.id, initOffset, ws),
           fetchArchiveFromSupabase(user.id),
@@ -1112,6 +1177,7 @@ export default function CoilApp() {
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
         setUser(null);
+        setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
         setWeekData(demoLoadCurrent());
         setArchive(demoLoadArchive());
       }
@@ -1157,7 +1223,7 @@ export default function CoilApp() {
       const hasContent = calcScore(weekData) > 0 ||
         Object.values(weekData.weekly).some(v => v.trim() !== "") ||
         Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.gratitude.trim() !== "" || d.wins.trim() !== ""
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting || d.gratitude.trim() !== "" || d.wins.trim() !== ""
         );
       if (hasContent) {
         const newArchive: ArchivedWeek[] = [
@@ -1372,13 +1438,13 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "daily" && (
-            <DailyTab data={weekData} onChange={setWeekData} weekOffset={weekOffset} weekStart={weekStart} />
+            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "weekly" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} onArchive={handleArchive} onReset={handleReset} />
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} onArchive={handleArchive} onReset={handleReset} />
           )}
           {activeTab === "export" && (
-            <ExportTab data={weekData} user={user} />
+            <ExportTab data={weekData} user={user} trackerSettings={trackerSettings} />
           )}
           {activeTab === "past" && (
             <PastWeeksTab archive={archive} />

@@ -14,6 +14,9 @@ function makeWeek(): WeekData {
         wolf: [],
         drinks: i === 0 ? 2 : 0,
         bagels: i < 4 ? 1 : 0,
+        steps10k: i < 5,
+        coldPlunge: i === 0,
+        fasting: i === 6,
         gratitude: "",
         wins: "",
         journal: "",
@@ -58,8 +61,26 @@ describe("bagel tracking in report outputs", () => {
     expect(html).toContain("Bagels this week: 4");
   });
 
-  it("generates the PDF with bagel-aware data", async () => {
-    const pdf = await generateReportPdf(makeWeek());
+  it("removes disabled bagels from report outputs", () => {
+    const settings = { bagelsEnabled: false, steps10kEnabled: false, coldPlungeEnabled: false, fastingEnabled: false };
+    expect(generateReport(makeWeek(), settings)).not.toContain("Bagel");
+    expect(generatePlainReport(makeWeek(), settings)).not.toContain("Bagels");
+    expect(generatePlainReportHtml(makeWeek(), settings).plain).not.toContain("Bagels");
+    expect(generateEmailHtml(makeWeek(), settings)).not.toContain("Bagels");
+  });
+
+  it("adds optional boolean trackers only when enabled", () => {
+    const settings = { bagelsEnabled: false, steps10kEnabled: true, coldPlungeEnabled: true, fastingEnabled: true };
+    const report = generateReport(makeWeek(), settings);
+    expect(report).toContain("## 10k Steps Tracking 👟");
+    expect(report).toContain("## Cold Plunge Tracking 🧊");
+    expect(report).toContain("## Fasting Tracking ⏳");
+    expect(report).toContain("**5/7**");
+    expect(report).toContain("**1/7**");
+  });
+
+  it("generates the PDF with tracker-aware data", async () => {
+    const pdf = await generateReportPdf(makeWeek(), { bagelsEnabled: true, steps10kEnabled: true, coldPlungeEnabled: true, fastingEnabled: true });
     expect(pdf.byteLength).toBeGreaterThan(1000);
   });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReportPdf } from "@/lib/generatePdf";
 import type { WeekData } from "@/lib/report";
+import { trackerSettingsFromRow } from "@/lib/tracking";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -21,7 +22,13 @@ export async function GET(req: Request) {
 
   if (!row?.data) return NextResponse.json({ error: "No data for this week" }, { status: 404 });
 
-  const pdfBytes = await generateReportPdf(row.data as WeekData);
+  const { data: settings } = await supabase
+    .from("settings")
+    .select("bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const pdfBytes = await generateReportPdf(row.data as WeekData, trackerSettingsFromRow(settings));
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
