@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { ArrowLeft, Sun, Moon, Monitor } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerSettings } from "@/lib/tracking";
 import type { User } from "@supabase/supabase-js";
 
 // All IANA timezones supported by the browser
@@ -105,6 +106,7 @@ function SettingsInner() {
   const [reminder2Hour, setReminder2Hour] = useState(20);
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
+  const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
 
   const allTimezones = useMemo(() => getAllTimezones(), []);
 
@@ -118,7 +120,8 @@ function SettingsInner() {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) {
-        // Demo mode: allow access to Appearance settings, skip all Supabase-backed fields
+        // Demo mode: local settings only, skip Supabase-backed email/reminder fields.
+        setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
         setLoading(false);
         return;
       }
@@ -146,6 +149,7 @@ function SettingsInner() {
         // saved timezone wins over browser detection; fall back to browser if not saved
         setTimezone(data.timezone || browserTz);
         setReportEmail(data.report_email ?? user.email ?? "");
+        setTrackerSettings(trackerSettingsFromRow(data));
       } else {
         // New user — use browser timezone and auth email as defaults
         setTimezone(browserTz);
@@ -156,8 +160,14 @@ function SettingsInner() {
   }, []);
 
   const handleSave = async () => {
-    if (!user) return;
     setSaving(true);
+    if (!user) {
+      localStorage.setItem("coil_tracker_settings", JSON.stringify(trackerSettings));
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
     const supabase = createClient();
     const { error } = await supabase.from("settings").upsert(
       {
@@ -173,6 +183,7 @@ function SettingsInner() {
         reminder2_hour: reminder2Hour,
         report_email: reportEmail || user.email,
         timezone,
+        ...trackerSettingsToRow(trackerSettings),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -185,6 +196,10 @@ function SettingsInner() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
+  };
+
+  const setTracker = (key: keyof TrackerSettings, value: boolean) => {
+    setTrackerSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleTestEmail = async () => {
@@ -339,6 +354,34 @@ function SettingsInner() {
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Tracking card */}
+          <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
+            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Tracking</p>
+            {([
+              { key: "bagelsEnabled", label: "🥯 Bagels", hint: "Count bagels. Hide from app and reports when off." },
+              { key: "steps10kEnabled", label: "👟 10k steps", hint: "Daily yes/no. On by default." },
+              { key: "coldPlungeEnabled", label: "🧊 Cold plunge", hint: "Daily yes/no. Off by default." },
+              { key: "fastingEnabled", label: "⏳ Fasting", hint: "Daily yes/no. Off by default." },
+            ] as const).map((item) => {
+              const enabled = trackerSettings[item.key];
+              return (
+                <div key={item.key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <span className="text-sm text-[--text]">{item.label}</span>
+                    <p className="text-xs text-[--text-faint] mt-0.5">{item.hint}</p>
+                  </div>
+                  <button
+                    onClick={() => setTracker(item.key, !enabled)}
+                    className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
+                    style={{ backgroundColor: enabled ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200" style={{ left: enabled ? "22px" : "2px" }} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Auth-required sections — hidden in demo mode */}
@@ -625,6 +668,8 @@ function SettingsInner() {
             </div>
           </div>
 
+          </>)} {/* end auth-required sections */}
+
           {saveError && (
             <p className="text-xs font-mono text-center px-2" style={{ color: "var(--red, #f87171)" }}>
               {saveError}
@@ -641,7 +686,7 @@ function SettingsInner() {
             {saving ? "Saving..." : saved ? "Saved!" : "Save Settings"}
           </button>
 
-          </>)} {/* end auth-required sections */}
+
         </div>
       </div>
     </div>

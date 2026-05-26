@@ -6,6 +6,7 @@ import fontkit from "@pdf-lib/fontkit";
 import fs from "fs";
 import path from "path";
 import type { WeekData } from "./report";
+import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -42,7 +43,7 @@ function fontPath(name: string): string {
   throw new Error(`Font not found: ${name}. Tried: ${candidates.join(", ")}`);
 }
 
-export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
+export async function generateReportPdf(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
 
@@ -233,7 +234,10 @@ export async function generateReportPdf(data: WeekData): Promise<Uint8Array> {
 
   // ── TRACKERS ──
   drawCountTable("Drinks", DAYS.map((d) => data.days[d]?.drinks ?? 0));
-  drawCountTable("Bagels", DAYS.map((d) => data.days[d]?.bagels ?? 0));
+  if (settings.bagelsEnabled) drawCountTable("Bagels", DAYS.map((d) => data.days[d]?.bagels ?? 0));
+  for (const t of BOOLEAN_TRACKERS.filter((tracker) => settings[tracker.enabledKey])) {
+    drawCountTable(`${t.emoji} ${t.label}`, DAYS.map((d) => data.days[d]?.[t.field] ? 1 : 0));
+  }
 
   // ── DAILY JOURNAL ──
   checkY(40);

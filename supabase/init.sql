@@ -80,6 +80,10 @@ create table if not exists public.settings (
   weekly_email_enabled bool not null default false,
   weekly_email_hour int not null default 20,
   timezone text not null default 'UTC',
+  bagels_enabled bool not null default true,
+  steps10k_enabled bool not null default false,
+  cold_plunge_enabled bool not null default false,
+  fasting_enabled bool not null default false,
   updated_at timestamptz not null default now()
 );
 

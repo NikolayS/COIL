@@ -1,5 +1,7 @@
 // Shared report generation — used by both client (page.tsx) and server (cron API route)
 
+import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
+
 type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 
 interface DayData {
@@ -7,6 +9,9 @@ interface DayData {
   wolf: string[];
   drinks: number;
   bagels?: number;
+  steps10k?: boolean;
+  coldPlunge?: boolean;
+  fasting?: boolean;
   gratitude: string;
   wins: string;
   journal: string;
@@ -87,7 +92,15 @@ function calcWeekBagels(data: WeekData): number {
   return DAYS.reduce((sum, d) => sum + (data.days[d]?.bagels ?? 0), 0);
 }
 
-export function generatePlainReport(data: WeekData): string {
+function calcBooleanTracker(data: WeekData, field: "steps10k" | "coldPlunge" | "fasting"): number {
+  return DAYS.filter((d) => data.days[d]?.[field]).length;
+}
+
+function enabledTrackers(settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS) {
+  return BOOLEAN_TRACKERS.filter((t) => settings[t.enabledKey]);
+}
+
+export function generatePlainReport(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   // TPM treats every \n as a paragraph gap. Entire report = one block of text.
@@ -103,7 +116,7 @@ export function generatePlainReport(data: WeekData): string {
   const totalDrinks = calcWeekDrinks(data);
   const totalBagels = calcWeekBagels(data);
   const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  const bagelStr = totalBagels > 0 ? ` | Bagels: ${totalBagels}` : "";
+  const bagelStr = settings.bagelsEnabled && totalBagels > 0 ? ` | Bagels: ${totalBagels}` : "";
   allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}${bagelStr}`);
 
   // Daily entries separated by " // "
@@ -141,7 +154,7 @@ function boldKey(s: string): string {
 
 // Returns both plain text and HTML (with <br> for soft line breaks).
 // Tiptap/ProseMirror treats pasted <br> as Shift+Enter — no paragraph gaps.
-export function generatePlainReportHtml(data: WeekData): { plain: string; html: string } {
+export function generatePlainReportHtml(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): { plain: string; html: string } {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [];
@@ -157,7 +170,10 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
     lines.push(`${t.label.padEnd(14)} ${dots}  ${s}/7`);
   }
   if (totalDrinks > 0) lines.push(`Drinks: ${totalDrinks}`);
-  if (totalBagels > 0) lines.push(`Bagels: ${totalBagels}`);
+  if (settings.bagelsEnabled && totalBagels > 0) lines.push(`Bagels: ${totalBagels}`);
+  for (const t of enabledTrackers(settings)) {
+    lines.push(`${t.emoji} ${t.label}: ${calcBooleanTracker(data, t.field)}/7`);
+  }
 
   // Daily entries — one line per day
   const dailyHtmlLines: string[] = []; // separate html for day entries (uses <h3>)
@@ -183,7 +199,7 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   const reflParts = weeklyLines(data.weekly);
   lines.push(reflParts.join("\n"));
 
-  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + (totalBagels > 0 ? 1 : 0) + 1;
+  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + (settings.bagelsEnabled && totalBagels > 0 ? 1 : 0) + enabledTrackers(settings).length + 1;
   const headerLines = lines.slice(0, numTerrLines);
 
   const plain = lines.join("\n");
@@ -198,7 +214,7 @@ export function generatePlainReportHtml(data: WeekData): { plain: string; html: 
   return { plain, html };
 }
 
-export function generateEmailHtml(data: WeekData): string {
+export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const totalDrinks = calcWeekDrinks(data);
@@ -269,7 +285,8 @@ export function generateEmailHtml(data: WeekData): string {
       ${terrRows}${totalRow}
     </table>
     ${totalDrinks > 0 ? `<p style="margin:8px 0 0;font-size:13px;color:#888">Drinks this week: ${totalDrinks}</p>` : ""}
-    ${totalBagels > 0 ? `<p style="margin:4px 0 0;font-size:13px;color:#888">Bagels this week: ${totalBagels}</p>` : ""}
+    ${settings.bagelsEnabled && totalBagels > 0 ? `<p style="margin:4px 0 0;font-size:13px;color:#888">Bagels this week: ${totalBagels}</p>` : ""}
+    ${enabledTrackers(settings).map((t) => `<p style="margin:4px 0 0;font-size:13px;color:#888">${t.emoji} ${esc(t.label)}: ${calcBooleanTracker(data, t.field)}/7</p>`).join("")}
   </div>
 
   ${dayHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Daily Journal</h2>${dayHtml}</div>` : ""}
@@ -278,7 +295,7 @@ export function generateEmailHtml(data: WeekData): string {
 </div>`;
 }
 
-export function generateReport(data: WeekData): string {
+export function generateReport(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [
@@ -304,12 +321,22 @@ export function generateReport(data: WeekData): string {
   lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
   lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
   lines.push(``);
-  lines.push(`## Bagel Tracking 🥯`);
-  const bagelRow = DAYS.map((d) => data.days[d]?.bagels ?? 0).join(" | ");
-  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
-  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
-  lines.push(`| ${bagelRow} | **${calcWeekBagels(data)}** |`);
-  lines.push(``);
+  if (settings.bagelsEnabled) {
+    lines.push(`## Bagel Tracking 🥯`);
+    const bagelRow = DAYS.map((d) => data.days[d]?.bagels ?? 0).join(" | ");
+    lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
+    lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
+    lines.push(`| ${bagelRow} | **${calcWeekBagels(data)}** |`);
+    lines.push(``);
+  }
+  for (const t of enabledTrackers(settings)) {
+    lines.push(`## ${t.label} Tracking ${t.emoji}`);
+    const row = DAYS.map((d) => data.days[d]?.[t.field] ? "✅" : "⬜").join(" | ");
+    lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
+    lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
+    lines.push(`| ${row} | **${calcBooleanTracker(data, t.field)}/7** |`);
+    lines.push(``);
+  }
   lines.push(`## Daily Journal`);
   lines.push(``);
   for (const day of DAYS) {
@@ -318,7 +345,8 @@ export function generateReport(data: WeekData): string {
     lines.push(`### ${DAY_LABELS[day]}`);
     if (d.wolf?.length) lines.push(`**Wolf:** ${d.wolf.join(", ")}`);
     lines.push(`**Drinks:** ${d.drinks ?? 0}`);
-    lines.push(`**Bagels:** ${d.bagels ?? 0}`);
+    if (settings.bagelsEnabled) lines.push(`**Bagels:** ${d.bagels ?? 0}`);
+    for (const t of enabledTrackers(settings)) lines.push(`**${t.emoji} ${t.label}:** ${data.days[day]?.[t.field] ? "yes" : "no"}`);
     if (d.gratitude) lines.push(`**Grateful:** ${d.gratitude}`);
     if (d.wins) lines.push(`**Wins:** ${d.wins}`);
     if (d.journal) lines.push(`**Notes:** ${d.journal}`);

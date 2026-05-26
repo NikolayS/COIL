@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { generateReport, generateEmailHtml, type WeekData } from "@/lib/report";
 import { generateReportPdf } from "@/lib/generatePdf";
+import { trackerSettingsFromRow } from "@/lib/tracking";
 import { NextRequest, NextResponse } from "next/server";
 
 function getMondayOfWeek(date: Date): Date {
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
   // Load saved report_email setting
   const { data: settings } = await supabase
     .from("settings")
-    .select("report_email")
+    .select("report_email, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -79,7 +80,8 @@ export async function POST(request: NextRequest) {
   }
 
   const weekData = weekRow.data as WeekData;
-  const report = generateReport(weekData);
+  const trackerSettings = trackerSettingsFromRow(settings);
+  const report = generateReport(weekData, trackerSettings);
   const emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;
   const emailBody = `[THIS IS A TEST EMAIL]\n\n${report}`;
 
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
   let pdfAttachment: { filename: string; content: string; type: string } | undefined;
   if (includePdf) {
     try {
-      const pdfBytes = await generateReportPdf(weekData);
+      const pdfBytes = await generateReportPdf(weekData, trackerSettings);
       pdfAttachment = {
         filename: `coil-report-${usedMonday}.pdf`,
         content: Buffer.from(pdfBytes).toString("base64"),
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest) {
       to: [email],
       subject: emailSubject,
       text: emailBody,
-      html: generateEmailHtml(weekData),
+      html: generateEmailHtml(weekData, trackerSettings),
       attachments: pdfAttachment ? [pdfAttachment] : undefined,
     }),
   });
