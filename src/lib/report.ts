@@ -1,6 +1,6 @@
 // Shared report generation — used by both client (page.tsx) and server (cron API route)
 
-import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
+import { enabledTrackers, getTrackerValue, trackerValueLabel, DEFAULT_TRACKER_SETTINGS, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "./tracking";
 
 type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 
@@ -12,6 +12,7 @@ interface DayData {
   steps10k?: boolean;
   coldPlunge?: boolean;
   fasting?: boolean;
+  trackers?: Record<string, TrackerValue>;
   gratitude: string;
   wins: string;
   journal: string;
@@ -84,20 +85,19 @@ function calcTerritoryScore(data: WeekData, key: TerritoryKey): number {
   return DAYS.filter((d) => data.days[d]?.territories[key]).length;
 }
 
-function calcWeekDrinks(data: WeekData): number {
-  return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
+function trackerValues(data: WeekData, tracker: TrackerDefinition): TrackerValue[] {
+  return DAYS.map((day) => getTrackerValue(data.days[day] as unknown as Record<string, unknown>, tracker));
 }
 
-function calcWeekBagels(data: WeekData): number {
-  return DAYS.reduce((sum, d) => sum + (data.days[d]?.bagels ?? 0), 0);
-}
-
-function calcBooleanTracker(data: WeekData, field: "steps10k" | "coldPlunge" | "fasting"): number {
-  return DAYS.filter((d) => data.days[d]?.[field]).length;
-}
-
-function enabledTrackers(settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS) {
-  return BOOLEAN_TRACKERS.filter((t) => settings[t.enabledKey]);
+function trackerSummary(data: WeekData, tracker: TrackerDefinition): string {
+  const values = trackerValues(data, tracker);
+  if (tracker.type === "boolean") return `${values.filter(Boolean).length}/7`;
+  if (tracker.type === "rating") {
+    const rated = values.map(Number).filter((value) => value > 0);
+    return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5 avg` : "—";
+  }
+  const total = values.reduce<number>((sum, value) => sum + Number(value), 0);
+  return `${total}${tracker.unit ? ` ${tracker.unit}` : ""}`;
 }
 
 export function generatePlainReport(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
@@ -113,11 +113,8 @@ export function generatePlainReport(data: WeekData, settings: TrackerSettings = 
     const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join("");
     return `${t.label} ${dots} ${s}/7`;
   });
-  const totalDrinks = calcWeekDrinks(data);
-  const totalBagels = calcWeekBagels(data);
-  const drinkStr = totalDrinks > 0 ? ` | Drinks: ${totalDrinks}` : "";
-  const bagelStr = settings.bagelsEnabled && totalBagels > 0 ? ` | Bagels: ${totalBagels}` : "";
-  allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${terrParts.join(" | ")}${drinkStr}${bagelStr}`);
+  const trackerParts = enabledTrackers(settings).map((tracker) => `${tracker.emoji} ${tracker.label}: ${trackerSummary(data, tracker)}`);
+  allParts.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE} | ${[...terrParts, ...trackerParts].join(" | ")}`);
 
   // Daily entries separated by " // "
   const dayParts: string[] = [];
@@ -162,17 +159,13 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
   // Header line
   lines.push(`COIL — Week of ${formatWeekOf(weekOf)} | Score: ${score}/${TOTAL_POSSIBLE}`);
   // Territory lines — one per territory
-  const totalDrinks = calcWeekDrinks(data);
-  const totalBagels = calcWeekBagels(data);
   for (const t of TERRITORIES) {
     const s = calcTerritoryScore(data, t.key);
     const dots = DAYS.map(d => data.days[d]?.territories[t.key] ? "Y" : "-").join(" ");
     lines.push(`${t.label.padEnd(14)} ${dots}  ${s}/7`);
   }
-  if (totalDrinks > 0) lines.push(`Drinks: ${totalDrinks}`);
-  if (settings.bagelsEnabled && totalBagels > 0) lines.push(`Bagels: ${totalBagels}`);
-  for (const t of enabledTrackers(settings)) {
-    lines.push(`${t.emoji} ${t.label}: ${calcBooleanTracker(data, t.field)}/7`);
+  for (const tracker of enabledTrackers(settings)) {
+    lines.push(`${tracker.emoji} ${tracker.label}: ${trackerSummary(data, tracker)}`);
   }
 
   // Daily entries — one line per day
@@ -199,7 +192,7 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
   const reflParts = weeklyLines(data.weekly);
   lines.push(reflParts.join("\n"));
 
-  const numTerrLines = TERRITORIES.length + (totalDrinks > 0 ? 1 : 0) + (settings.bagelsEnabled && totalBagels > 0 ? 1 : 0) + enabledTrackers(settings).length + 1;
+  const numTerrLines = TERRITORIES.length + enabledTrackers(settings).length + 1;
   const headerLines = lines.slice(0, numTerrLines);
 
   const plain = lines.join("\n");
@@ -217,8 +210,6 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
 export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
   const weekOf = new Date(data.weekOf);
   const score = calcScore(data);
-  const totalDrinks = calcWeekDrinks(data);
-  const totalBagels = calcWeekBagels(data);
   const w = data.weekly;
 
   const style = {
@@ -284,9 +275,7 @@ export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DE
       <tr><th style="${style.thLeft}">Territory</th>${DAYS.map(d => `<th style="${style.th}">${DAY_LABELS[d]}</th>`).join("")}<th style="${style.th}">Total</th></tr>
       ${terrRows}${totalRow}
     </table>
-    ${totalDrinks > 0 ? `<p style="margin:8px 0 0;font-size:13px;color:#888">Drinks this week: ${totalDrinks}</p>` : ""}
-    ${settings.bagelsEnabled && totalBagels > 0 ? `<p style="margin:4px 0 0;font-size:13px;color:#888">Bagels this week: ${totalBagels}</p>` : ""}
-    ${enabledTrackers(settings).map((t) => `<p style="margin:4px 0 0;font-size:13px;color:#888">${t.emoji} ${esc(t.label)}: ${calcBooleanTracker(data, t.field)}/7</p>`).join("")}
+    ${enabledTrackers(settings).map((tracker) => `<p style="margin:4px 0 0;font-size:13px;color:#888">${tracker.emoji} ${esc(tracker.label)}: ${esc(trackerSummary(data, tracker))}</p>`).join("")}
   </div>
 
   ${dayHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Daily Journal</h2>${dayHtml}</div>` : ""}
@@ -315,26 +304,12 @@ export function generateReport(data: WeekData, settings: TrackerSettings = DEFAU
   const totals = DAYS.map((d) => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
   lines.push(`| **Total** | ${totals.join(" | ")} | **${score}/${TOTAL_POSSIBLE}** |`);
   lines.push(``);
-  lines.push(`## Alcohol Tracking`);
-  const drinkRow = DAYS.map((d) => data.days[d]?.drinks ?? 0).join(" | ");
-  lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
-  lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
-  lines.push(`| ${drinkRow} | **${calcWeekDrinks(data)}** |`);
-  lines.push(``);
-  if (settings.bagelsEnabled) {
-    lines.push(`## Bagel Tracking 🥯`);
-    const bagelRow = DAYS.map((d) => data.days[d]?.bagels ?? 0).join(" | ");
+  for (const tracker of enabledTrackers(settings)) {
+    lines.push(`## ${tracker.label} Tracking ${tracker.emoji}`);
+    const row = trackerValues(data, tracker).map((value) => tracker.type === "boolean" ? (value ? "✅" : "⬜") : trackerValueLabel(value, tracker)).join(" | ");
     lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
     lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
-    lines.push(`| ${bagelRow} | **${calcWeekBagels(data)}** |`);
-    lines.push(``);
-  }
-  for (const t of enabledTrackers(settings)) {
-    lines.push(`## ${t.label} Tracking ${t.emoji}`);
-    const row = DAYS.map((d) => data.days[d]?.[t.field] ? "✅" : "⬜").join(" | ");
-    lines.push(`| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Weekly Total |`);
-    lines.push(`|-----|-----|-----|-----|-----|-----|-----|--------------|`);
-    lines.push(`| ${row} | **${calcBooleanTracker(data, t.field)}/7** |`);
+    lines.push(`| ${row} | **${trackerSummary(data, tracker)}** |`);
     lines.push(``);
   }
   lines.push(`## Daily Journal`);
@@ -344,9 +319,9 @@ export function generateReport(data: WeekData, settings: TrackerSettings = DEFAU
     if (!d) continue;
     lines.push(`### ${DAY_LABELS[day]}`);
     if (d.wolf?.length) lines.push(`**Wolf:** ${d.wolf.join(", ")}`);
-    lines.push(`**Drinks:** ${d.drinks ?? 0}`);
-    if (settings.bagelsEnabled) lines.push(`**Bagels:** ${d.bagels ?? 0}`);
-    for (const t of enabledTrackers(settings)) lines.push(`**${t.emoji} ${t.label}:** ${data.days[day]?.[t.field] ? "yes" : "no"}`);
+    for (const tracker of enabledTrackers(settings)) {
+      lines.push(`**${tracker.emoji} ${tracker.label}:** ${trackerValueLabel(getTrackerValue(d as unknown as Record<string, unknown>, tracker), tracker)}`);
+    }
     if (d.gratitude) lines.push(`**Grateful:** ${d.gratitude}`);
     if (d.wins) lines.push(`**Wins:** ${d.wins}`);
     if (d.journal) lines.push(`**Notes:** ${d.journal}`);

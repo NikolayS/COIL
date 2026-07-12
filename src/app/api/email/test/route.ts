@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   // Load saved report_email setting
   const { data: settings } = await supabase
     .from("settings")
-    .select("report_email, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+    .select("report_email, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("user_id", userId)
     .maybeSingle();
 

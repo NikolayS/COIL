@@ -5,9 +5,9 @@
 // alter table settings add column if not exists report_email text;
 
 import { useState, useEffect, useMemo, Suspense } from "react";
-import { ArrowLeft, Sun, Moon, Monitor } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerSettings } from "@/lib/tracking";
+import { createTrackerId, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerDefinition, type TrackerSettings, type TrackerType } from "@/lib/tracking";
 import type { User } from "@supabase/supabase-js";
 
 // All IANA timezones supported by the browser
@@ -107,6 +107,8 @@ function SettingsInner() {
   const [timezone, setTimezone] = useState("UTC");
   const [reportEmail, setReportEmail] = useState("");
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
+  const [addingTracker, setAddingTracker] = useState(false);
+  const [trackerDraft, setTrackerDraft] = useState({ label: "", emoji: "🎯", type: "boolean" as TrackerType, unit: "" });
 
   const allTimezones = useMemo(() => getAllTimezones(), []);
 
@@ -198,8 +200,31 @@ function SettingsInner() {
     }
   };
 
-  const setTracker = (key: keyof TrackerSettings, value: boolean) => {
-    setTrackerSettings((prev) => ({ ...prev, [key]: value }));
+  const updateTracker = (id: string, patch: Partial<TrackerDefinition>) => {
+    setTrackerSettings((prev) => ({
+      trackers: prev.trackers.map((tracker) => tracker.id === id ? { ...tracker, ...patch } : tracker),
+    }));
+  };
+
+  const removeTracker = (id: string) => {
+    setTrackerSettings((prev) => ({ trackers: prev.trackers.filter((tracker) => tracker.id !== id) }));
+  };
+
+  const addTracker = () => {
+    const label = trackerDraft.label.trim();
+    if (!label) return;
+    setTrackerSettings((prev) => ({
+      trackers: [...prev.trackers, {
+        id: createTrackerId(label),
+        label,
+        emoji: trackerDraft.emoji.trim() || "🎯",
+        type: trackerDraft.type,
+        enabled: true,
+        unit: trackerDraft.type === "counter" ? trackerDraft.unit.trim() || undefined : undefined,
+      }],
+    }));
+    setTrackerDraft({ label: "", emoji: "🎯", type: "boolean", unit: "" });
+    setAddingTracker(false);
   };
 
   const handleTestEmail = async () => {
@@ -358,30 +383,119 @@ function SettingsInner() {
 
           {/* Tracking card */}
           <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-4">
-            <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Tracking</p>
-            {([
-              { key: "bagelsEnabled", label: "🥯 Bagels", hint: "Count bagels. Hide from app and reports when off." },
-              { key: "steps10kEnabled", label: "👟 10k steps", hint: "Daily yes/no. On by default." },
-              { key: "coldPlungeEnabled", label: "🧊 Cold plunge", hint: "Daily yes/no. Off by default." },
-              { key: "fastingEnabled", label: "⏳ Fasting", hint: "Daily yes/no. Off by default." },
-            ] as const).map((item) => {
-              const enabled = trackerSettings[item.key];
-              return (
-                <div key={item.key} className="flex items-center justify-between gap-4">
-                  <div>
-                    <span className="text-sm text-[--text]">{item.label}</span>
-                    <p className="text-xs text-[--text-faint] mt-0.5">{item.hint}</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Trackers</p>
+                <p className="text-xs text-[--text-faint] mt-1">Yes/no habits, quantities, and 1–5 ratings.</p>
+              </div>
+              <button
+                onClick={() => setAddingTracker(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono flex-shrink-0"
+                style={{ color: "var(--gold)", backgroundColor: "var(--gold-bg)", border: "1px solid var(--gold-border)" }}
+              >
+                <Plus size={13} /> Add
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {trackerSettings.trackers.map((tracker) => {
+                const typeLabel = tracker.type === "boolean" ? "YES / NO" : tracker.type === "counter" ? "COUNT" : "1–5";
+                return (
+                  <div key={tracker.id} className="rounded-xl px-3 py-3 bg-[--bg] border border-[--border] flex items-center gap-3">
+                    <span className="text-xl w-7 text-center flex-shrink-0">{tracker.emoji}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-[--text] truncate">{tracker.label}</p>
+                      <p className="text-[10px] font-mono tracking-wider text-[--text-faint] mt-0.5">
+                        {typeLabel}{tracker.unit && tracker.type === "counter" ? ` · ${tracker.unit}` : ""}
+                      </p>
+                    </div>
+                    {!tracker.builtIn && (
+                      <button
+                        onClick={() => removeTracker(tracker.id)}
+                        aria-label={`Delete ${tracker.label}`}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[--text-faint] hover:text-red-400"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => updateTracker(tracker.id, { enabled: !tracker.enabled })}
+                      aria-label={`${tracker.enabled ? "Disable" : "Enable"} ${tracker.label}`}
+                      aria-pressed={tracker.enabled}
+                      className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
+                      style={{ backgroundColor: tracker.enabled ? "var(--gold)" : "var(--bg-card)", border: "1px solid var(--border)" }}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200" style={{ left: tracker.enabled ? "22px" : "2px" }} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setTracker(item.key, !enabled)}
-                    className="w-12 h-7 rounded-full transition-colors duration-200 relative flex-shrink-0"
-                    style={{ backgroundColor: enabled ? "var(--gold)" : "var(--bg)", border: "1px solid var(--border)" }}
-                  >
-                    <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all duration-200" style={{ left: enabled ? "22px" : "2px" }} />
+                );
+              })}
+            </div>
+
+            {addingTracker && (
+              <div className="rounded-xl p-4 border border-[--gold-border] bg-[--bg] space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-[--text]">New tracker</p>
+                  <button onClick={() => setAddingTracker(false)} className="text-[--text-faint]" aria-label="Close">
+                    <X size={16} />
                   </button>
                 </div>
-              );
-            })}
+                <div className="flex gap-2">
+                  <input
+                    value={trackerDraft.emoji}
+                    onChange={(event) => setTrackerDraft((draft) => ({ ...draft, emoji: event.target.value }))}
+                    aria-label="Emoji"
+                    className="w-14 bg-[--bg-input] border border-[--border] rounded-lg px-2 py-2.5 text-center focus:outline-none focus:border-[--gold-border]"
+                    maxLength={8}
+                  />
+                  <input
+                    value={trackerDraft.label}
+                    onChange={(event) => setTrackerDraft((draft) => ({ ...draft, label: event.target.value }))}
+                    placeholder="Tracker name"
+                    className="flex-1 min-w-0 bg-[--bg-input] border border-[--border] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[--gold-border]"
+                    maxLength={40}
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: "boolean", label: "Yes / No", hint: "Habit" },
+                    { value: "counter", label: "Count", hint: "Quantity" },
+                    { value: "rating", label: "1–5", hint: "Quality" },
+                  ] as const).map((option) => {
+                    const active = trackerDraft.type === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => setTrackerDraft((draft) => ({ ...draft, type: option.value }))}
+                        className="rounded-lg py-2 px-1 border text-center"
+                        style={{ borderColor: active ? "var(--gold)" : "var(--border)", backgroundColor: active ? "var(--gold-bg)" : "transparent" }}
+                      >
+                        <span className="block text-xs" style={{ color: active ? "var(--gold)" : "var(--text-muted)" }}>{option.label}</span>
+                        <span className="block text-[10px] text-[--text-faint] mt-0.5">{option.hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {trackerDraft.type === "counter" && (
+                  <input
+                    value={trackerDraft.unit}
+                    onChange={(event) => setTrackerDraft((draft) => ({ ...draft, unit: event.target.value }))}
+                    placeholder="Unit (optional), e.g. pages, km, cups"
+                    className="w-full bg-[--bg-input] border border-[--border] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[--gold-border]"
+                    maxLength={20}
+                  />
+                )}
+                <button
+                  onClick={addTracker}
+                  disabled={!trackerDraft.label.trim()}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium disabled:opacity-40"
+                  style={{ backgroundColor: "var(--gold)", color: "white" }}
+                >
+                  Add tracker
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Auth-required sections — hidden in demo mode */}

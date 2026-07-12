@@ -84,6 +84,7 @@ create table if not exists public.settings (
   steps10k_enabled bool not null default true,
   cold_plunge_enabled bool not null default false,
   fasting_enabled bool not null default false,
+  tracker_definitions jsonb,
   updated_at timestamptz not null default now()
 );
 

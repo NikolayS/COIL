@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
-import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerSettings } from "@/lib/tracking";
+import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "@/lib/tracking";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ interface DayData {
   steps10k: boolean;
   coldPlunge: boolean;
   fasting: boolean;
+  trackers: Record<string, TrackerValue>;
   gratitude: string;
   wins: string;
   journal: string;
@@ -114,6 +115,7 @@ function emptyDayData(): DayData {
     steps10k: false,
     coldPlunge: false,
     fasting: false,
+    trackers: {},
     gratitude: "",
     wins: "",
     journal: "",
@@ -145,21 +147,6 @@ function calcTerritoryScore(data: WeekData, key: TerritoryKey): number {
   return DAYS.filter((d) => data.days[d]?.territories[key]).length;
 }
 
-function calcWeekDrinks(data: WeekData): number {
-  return DAYS.reduce((sum, d) => sum + (data.days[d]?.drinks ?? 0), 0);
-}
-
-function calcWeekBagels(data: WeekData): number {
-  return DAYS.reduce((sum, d) => sum + (data.days[d]?.bagels ?? 0), 0);
-}
-
-function bagelComment(today: number, weeklyTotal: number): string | null {
-  if (today > 1 && weeklyTotal > 3) return "Bakery operating at suspiciously high throughput.";
-  if (today > 1) return "Two bagels in one day. Someone found the good bakery.";
-  if (weeklyTotal > 3) return "More than three this week. Respectfully: calm down, Casanova.";
-  return null;
-}
-
 // ── Storage ────────────────────────────────────────────────────────────────
 // Demo/guest mode: localStorage only.
 // Authenticated mode: Supabase only — localStorage never touched.
@@ -179,6 +166,7 @@ function migrateWeekData(data: WeekData): WeekData {
         steps10k: d.steps10k ?? false,
         coldPlunge: d.coldPlunge ?? false,
         fasting: d.fasting ?? false,
+        trackers: d.trackers ?? {},
         gratitude: d.gratitude ?? "",
         wins: d.wins ?? "",
       },
@@ -460,34 +448,6 @@ function CountCounter({
   );
 }
 
-function DrinkCounter(props: { value: number; weeklyTotal: number; onChange: (v: number) => void }) {
-  return (
-    <CountCounter
-      {...props}
-      label="🥃 Drinks Today"
-      weeklyNote={(weeklyTotal) =>
-        weeklyTotal > 20
-          ? <>Weekly: {weeklyTotal} 🤨 sure about that?</>
-          : weeklyTotal > 14
-          ? <>Weekly: {weeklyTotal} 🍺🍺 rough week</>
-          : weeklyTotal > 7
-          ? <>Weekly: {weeklyTotal} 🥴 easy tiger</>
-          : <>Weekly: {weeklyTotal}</>
-      }
-    />
-  );
-}
-
-function BagelCounter(props: { value: number; weeklyTotal: number; onChange: (v: number) => void }) {
-  return (
-    <CountCounter
-      {...props}
-      label="🥯 Bagels Today"
-      comment={bagelComment(props.value, props.weeklyTotal)}
-    />
-  );
-}
-
 function BooleanTrackerRow({ label, emoji, checked, onToggle }: { label: string; emoji: string; checked: boolean; onToggle: () => void }) {
   return (
     <button
@@ -507,6 +467,35 @@ function BooleanTrackerRow({ label, emoji, checked, onToggle }: { label: string;
         )}
       </div>
     </button>
+  );
+}
+
+function RatingTrackerRow({ label, emoji, value, onChange }: { label: string; emoji: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <div className="rounded-xl bg-[--bg-card] border border-[--border] px-4 py-3">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[15px] font-medium tracking-wide">{emoji} {label}</span>
+        <span className="text-xs font-mono text-[--text-faint]">{value > 0 ? `${value}/5` : "Not rated"}</span>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {[1, 2, 3, 4, 5].map((rating) => (
+          <button
+            key={rating}
+            onClick={() => onChange(value === rating ? 0 : rating)}
+            aria-label={`${label}: ${rating} out of 5`}
+            aria-pressed={value === rating}
+            className="h-9 rounded-lg font-mono text-sm border transition-all active:scale-95"
+            style={{
+              borderColor: value === rating ? "var(--gold)" : "var(--border)",
+              backgroundColor: value === rating ? "var(--gold-bg)" : "var(--bg)",
+              color: value === rating ? "var(--gold)" : "var(--text-muted)",
+            }}
+          >
+            {rating}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -571,8 +560,13 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
 
   const dayData = data.days[activeDay] ?? emptyDayData();
-  const weeklyDrinks = calcWeekDrinks(data);
-  const weeklyBagels = calcWeekBagels(data);
+  const activeTrackers = enabledTrackers(trackerSettings);
+
+  const weeklyTrackerTotal = (tracker: TrackerDefinition): number => {
+    const values = DAYS.map((day) => getTrackerValue(data.days[day] as unknown as Record<string, unknown>, tracker));
+    if (tracker.type === "boolean") return values.filter(Boolean).length;
+    return values.reduce<number>((sum, value) => sum + Number(value), 0);
+  };
 
   // How many days ago is a given day key?
   const daysAgo = (dayKey: string): number => {
@@ -692,27 +686,42 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
       {/* Trackers */}
       <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">Trackers</p>
-        <DrinkCounter
-          value={dayData.drinks}
-          weeklyTotal={weeklyDrinks}
-          onChange={(drinks) => updateDay({ drinks })}
-        />
-        {trackerSettings.bagelsEnabled && (
-          <BagelCounter
-            value={dayData.bagels ?? 0}
-            weeklyTotal={weeklyBagels}
-            onChange={(bagels) => updateDay({ bagels })}
-          />
-        )}
-        {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => (
-          <BooleanTrackerRow
-            key={t.key}
-            label={t.label}
-            emoji={t.emoji}
-            checked={Boolean(dayData[t.field])}
-            onToggle={() => updateDay({ [t.field]: !dayData[t.field] } as Partial<DayData>)}
-          />
-        ))}
+        {activeTrackers.map((tracker) => {
+          const value = getTrackerValue(dayData as unknown as Record<string, unknown>, tracker);
+          const setValue = (next: TrackerValue) => updateDay({ trackers: { ...dayData.trackers, [tracker.id]: next } });
+          if (tracker.type === "boolean") {
+            return (
+              <BooleanTrackerRow
+                key={tracker.id}
+                label={tracker.label}
+                emoji={tracker.emoji}
+                checked={Boolean(value)}
+                onToggle={() => setValue(!value)}
+              />
+            );
+          }
+          if (tracker.type === "rating") {
+            return (
+              <RatingTrackerRow
+                key={tracker.id}
+                label={tracker.label}
+                emoji={tracker.emoji}
+                value={Number(value)}
+                onChange={setValue}
+              />
+            );
+          }
+          return (
+            <CountCounter
+              key={tracker.id}
+              label={`${tracker.emoji} ${tracker.label} Today`}
+              value={Number(value)}
+              weeklyTotal={weeklyTrackerTotal(tracker)}
+              onChange={setValue}
+              weeklyNote={(total) => <>Weekly: {total}{tracker.unit ? ` ${tracker.unit}` : ""}</>}
+            />
+          );
+        })}
       </div>
 
       {/* Gratitude & Wins */}
@@ -749,9 +758,6 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
 }
 
 function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings }) {
-  const weeklyDrinks = calcWeekDrinks(data);
-  const weeklyBagels = calcWeekBagels(data);
-
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
   };
@@ -790,25 +796,25 @@ function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChan
             </div>
           );
         })}
-        <div className="pt-2 border-t border-[--border] flex items-center gap-2 text-sm">
-          <span className="text-[--text-muted]">🥃 Drinks</span>
-          <span className="font-mono text-[--text]">{weeklyDrinks} this week</span>
-        </div>
-        {trackerSettings.bagelsEnabled && (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-[--text-muted]">🥯 Bagels</span>
-            <span className="font-mono text-[--text]">{weeklyBagels} this week</span>
-          </div>
-        )}
-        {BOOLEAN_TRACKERS.filter((t) => trackerSettings[t.enabledKey]).map((t) => {
-          const total = DAYS.filter((day) => data.days[day]?.[t.field]).length;
+        <div className="pt-2 border-t border-[--border] space-y-2">
+        {enabledTrackers(trackerSettings).map((tracker) => {
+          const values = DAYS.map((day) => getTrackerValue(data.days[day] as unknown as Record<string, unknown>, tracker));
+          const summary = tracker.type === "boolean"
+            ? `${values.filter(Boolean).length}/7 achieved`
+            : tracker.type === "rating"
+              ? (() => {
+                  const rated = values.map(Number).filter((value) => value > 0);
+                  return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5 average` : "No ratings";
+                })()
+              : `${values.reduce<number>((sum, value) => sum + Number(value), 0)}${tracker.unit ? ` ${tracker.unit}` : ""} this week`;
           return (
-            <div key={t.key} className="flex items-center gap-2 text-sm">
-              <span className="text-[--text-muted]">{t.emoji} {t.label}</span>
-              <span className="font-mono text-[--text]">{total}/7 achieved</span>
+            <div key={tracker.id} className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-[--text-muted]">{tracker.emoji} {tracker.label}</span>
+              <span className="font-mono text-xs text-[--text] text-right">{summary}</span>
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Reflection questions */}
@@ -1131,7 +1137,7 @@ export default function CoilApp() {
         const supabaseClient = createClient();
         const { data: settingsData } = await supabaseClient
           .from("settings")
-          .select("week_start, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+          .select("week_start, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
           .eq("user_id", user.id)
           .maybeSingle();
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
@@ -1192,7 +1198,7 @@ export default function CoilApp() {
       const hasContent = calcScore(weekData) > 0 ||
         Object.values(weekData.weekly).some(v => v.trim() !== "") ||
         Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting || d.gratitude.trim() !== "" || d.wins.trim() !== ""
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting || Object.values(d.trackers ?? {}).some(Boolean) || d.gratitude.trim() !== "" || d.wins.trim() !== ""
         );
       if (hasContent) {
         const newArchive: ArchivedWeek[] = [

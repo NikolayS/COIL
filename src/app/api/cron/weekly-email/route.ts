@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   // Fetch all users with weekly email enabled
   const { data: settings, error: settingsError } = await supabase
     .from("settings")
-    .select("user_id, weekly_email_hour, week_start, report_email, timezone, email_pdf, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+    .select("user_id, weekly_email_hour, week_start, report_email, timezone, email_pdf, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("weekly_email_enabled", true);
 
   if (settingsError) {
