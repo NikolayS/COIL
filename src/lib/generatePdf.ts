@@ -6,7 +6,7 @@ import fontkit from "@pdf-lib/fontkit";
 import fs from "fs";
 import path from "path";
 import type { WeekData } from "./report";
-import { BOOLEAN_TRACKERS, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
+import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -204,7 +204,7 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
   }
   y -= ROW_H + 20;
 
-  function drawCountTable(title: string, values: number[]) {
+  function drawCountTable(title: string, values: number[], totalOverride?: string) {
     checkY(60);
     drawText(title, MARGIN, y, { bold: true, size: 12 });
     y -= 16;
@@ -220,11 +220,11 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
     }
     y -= ROW_H;
 
-    const total = values.reduce((a, b) => a + b, 0);
+    const total = totalOverride ?? String(values.reduce((a, b) => a + b, 0));
     page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.rowAlt });
     {
       let x = MARGIN + 4;
-      for (const v of [...values.map(String), String(total)]) {
+      for (const v of [...values.map(String), total]) {
         page.drawText(v, { x, y: y + 2, font: fontRegular, size: 9, color: COLORS.dark });
         x += countColW;
       }
@@ -233,10 +233,17 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
   }
 
   // ── TRACKERS ──
-  drawCountTable("Drinks", DAYS.map((d) => data.days[d]?.drinks ?? 0));
-  if (settings.bagelsEnabled) drawCountTable("Bagels", DAYS.map((d) => data.days[d]?.bagels ?? 0));
-  for (const t of BOOLEAN_TRACKERS.filter((tracker) => settings[tracker.enabledKey])) {
-    drawCountTable(`${t.emoji} ${t.label}`, DAYS.map((d) => data.days[d]?.[t.field] ? 1 : 0));
+  for (const tracker of enabledTrackers(settings)) {
+    const values = DAYS.map((day) => Number(getTrackerValue(data.days[day] as unknown as Record<string, unknown>, tracker)));
+    const total = tracker.type === "boolean"
+      ? `${values.filter(Boolean).length}/7`
+      : tracker.type === "rating"
+        ? (() => {
+            const rated = values.filter((value) => value > 0);
+            return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5` : "-";
+          })()
+        : undefined;
+    drawCountTable(`${tracker.emoji} ${tracker.label}`, values, total);
   }
 
   // ── DAILY JOURNAL ──

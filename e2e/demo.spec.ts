@@ -164,15 +164,7 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("Drink counter increments and saves", async ({ page }) => {
-    const plusBtn = page.locator("button").filter({ hasText: "" }).nth(0);
-    // More reliably: target the + button next to drink counter
-    // The counter shows the current value
-    const drinkValue = page.locator(".font-mono.text-2xl");
-    const initialDrinks = parseInt(await drinkValue.textContent() ?? "0", 10);
-
-    // Click +
-    await page.locator("button").filter({ has: page.locator("svg") }).nth(-1).click();
-
+    await page.getByRole("button", { name: "Increase 🥃 Drinks Today" }).click();
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
   });
 });

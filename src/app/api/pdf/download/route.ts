@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
   const { data: settings } = await supabase
     .from("settings")
-    .select("bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+    .select("tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("user_id", user.id)
     .maybeSingle();
 
