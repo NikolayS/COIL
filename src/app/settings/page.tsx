@@ -4,7 +4,7 @@
 // alter table settings add column if not exists weekly_email_day text default 'sunday';
 // alter table settings add column if not exists report_email text;
 
-import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { ArrowLeft, Sun, Moon, Monitor, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { createTrackerId, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerDefinition, type TrackerSettings, type TrackerType } from "@/lib/tracking";
@@ -54,66 +54,22 @@ const TRACKER_EMOJIS = [
   "🎨", "🎵", "🌱", "🌞", "🌙", "🏠", "🧹", "💰",
 ] as const;
 
-function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [open]);
-
+function EmojiButton({ value, open, onToggle }: { value: string; open: boolean; onToggle: () => void }) {
   return (
-    <div ref={pickerRef} className="relative flex-shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-label="Choose emoji"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="w-14 h-[42px] bg-[--bg-input] border border-[--border] rounded-lg text-xl flex items-center justify-center focus:outline-none focus:border-[--gold-border]"
-      >
-        {value || "🎯"}
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Emoji picker"
-          className="absolute top-full left-0 z-30 mt-2 w-64 rounded-xl border border-[--border] bg-[--bg-card] p-3 shadow-xl"
-        >
-          <div className="grid grid-cols-8 gap-1">
-            {TRACKER_EMOJIS.map((emoji) => (
-              <button
-                type="button"
-                key={emoji}
-                onClick={() => {
-                  onChange(emoji);
-                  setOpen(false);
-                }}
-                aria-label={`Use ${emoji}`}
-                aria-pressed={value === emoji}
-                className="aspect-square rounded-lg text-xl flex items-center justify-center hover:bg-[--gold-bg]"
-                style={{ outline: value === emoji ? "1px solid var(--gold)" : "none" }}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-          <input
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            aria-label="Custom emoji"
-            placeholder="Or type/paste any emoji"
-            className="mt-3 w-full bg-[--bg-input] border border-[--border] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[--gold-border]"
-            maxLength={8}
-          />
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label="Choose emoji"
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      className="w-14 h-[42px] border rounded-lg text-xl flex-shrink-0 flex items-center justify-center focus:outline-none"
+      style={{
+        backgroundColor: "var(--bg-input)",
+        borderColor: open ? "var(--gold)" : "var(--border)",
+      }}
+    >
+      {value || "🎯"}
+    </button>
   );
 }
 
@@ -179,6 +135,7 @@ function SettingsInner() {
   const [reportEmail, setReportEmail] = useState("");
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
   const [addingTracker, setAddingTracker] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [trackerDraft, setTrackerDraft] = useState({ label: "", emoji: "🎯", type: "boolean" as TrackerType, unit: "" });
 
   const allTimezones = useMemo(() => getAllTimezones(), []);
@@ -295,6 +252,7 @@ function SettingsInner() {
       }],
     }));
     setTrackerDraft({ label: "", emoji: "🎯", type: "boolean", unit: "" });
+    setEmojiPickerOpen(false);
     setAddingTracker(false);
   };
 
@@ -460,7 +418,10 @@ function SettingsInner() {
                 <p className="text-xs text-[--text-faint] mt-1">Yes/no habits, quantities, and 1–5 ratings.</p>
               </div>
               <button
-                onClick={() => setAddingTracker(true)}
+                onClick={() => {
+                  setAddingTracker(true);
+                  setEmojiPickerOpen(false);
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono flex-shrink-0"
                 style={{ color: "var(--gold)", backgroundColor: "var(--gold-bg)", border: "1px solid var(--gold-border)" }}
               >
@@ -507,14 +468,22 @@ function SettingsInner() {
               <div className="rounded-xl p-4 border border-[--gold-border] bg-[--bg] space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-[--text]">New tracker</p>
-                  <button onClick={() => setAddingTracker(false)} className="text-[--text-faint]" aria-label="Close">
+                  <button
+                    onClick={() => {
+                      setAddingTracker(false);
+                      setEmojiPickerOpen(false);
+                    }}
+                    className="text-[--text-faint]"
+                    aria-label="Close"
+                  >
                     <X size={16} />
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <EmojiPicker
+                  <EmojiButton
                     value={trackerDraft.emoji}
-                    onChange={(emoji) => setTrackerDraft((draft) => ({ ...draft, emoji }))}
+                    open={emojiPickerOpen}
+                    onToggle={() => setEmojiPickerOpen((open) => !open)}
                   />
                   <input
                     value={trackerDraft.label}
@@ -525,6 +494,45 @@ function SettingsInner() {
                     autoFocus
                   />
                 </div>
+                {emojiPickerOpen && (
+                  <div
+                    role="dialog"
+                    aria-label="Emoji picker"
+                    className="rounded-xl border p-3"
+                    style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border)" }}
+                  >
+                    <div className="grid grid-cols-8 gap-1">
+                      {TRACKER_EMOJIS.map((emoji) => (
+                        <button
+                          type="button"
+                          key={emoji}
+                          onClick={() => {
+                            setTrackerDraft((draft) => ({ ...draft, emoji }));
+                            setEmojiPickerOpen(false);
+                          }}
+                          aria-label={`Use ${emoji}`}
+                          aria-pressed={trackerDraft.emoji === emoji}
+                          className="aspect-square min-w-0 rounded-lg text-xl flex items-center justify-center"
+                          style={{
+                            backgroundColor: trackerDraft.emoji === emoji ? "var(--gold-bg-hover)" : "transparent",
+                            outline: trackerDraft.emoji === emoji ? "1px solid var(--gold)" : "none",
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      value={trackerDraft.emoji}
+                      onChange={(event) => setTrackerDraft((draft) => ({ ...draft, emoji: event.target.value }))}
+                      aria-label="Custom emoji"
+                      placeholder="Or type/paste any emoji"
+                      className="mt-3 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{ backgroundColor: "var(--bg-input)", borderColor: "var(--border)" }}
+                      maxLength={8}
+                    />
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   {([
                     { value: "boolean", label: "Yes / No", hint: "Habit" },
