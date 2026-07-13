@@ -4,7 +4,7 @@
 // alter table settings add column if not exists weekly_email_day text default 'sunday';
 // alter table settings add column if not exists report_email text;
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { ArrowLeft, Sun, Moon, Monitor, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { createTrackerId, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerDefinition, type TrackerSettings, type TrackerType } from "@/lib/tracking";
@@ -45,6 +45,77 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
   label: formatHour(i),
 }));
+
+const TRACKER_EMOJIS = [
+  "🎯", "✅", "⭐", "🔥", "💪", "🏋️", "🏃", "🚶",
+  "🚴", "🧘", "👟", "❤️", "🧠", "⚡", "😊", "😴",
+  "💧", "🥗", "🍎", "☕", "🥃", "🚭", "💊", "🧊",
+  "📚", "✍️", "💻", "💼", "📝", "📈", "⏱️", "⏳",
+  "🎨", "🎵", "🌱", "🌞", "🌙", "🏠", "🧹", "💰",
+] as const;
+
+function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [open]);
+
+  return (
+    <div ref={pickerRef} className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="Choose emoji"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="w-14 h-[42px] bg-[--bg-input] border border-[--border] rounded-lg text-xl flex items-center justify-center focus:outline-none focus:border-[--gold-border]"
+      >
+        {value || "🎯"}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Emoji picker"
+          className="absolute top-full left-0 z-30 mt-2 w-64 rounded-xl border border-[--border] bg-[--bg-card] p-3 shadow-xl"
+        >
+          <div className="grid grid-cols-8 gap-1">
+            {TRACKER_EMOJIS.map((emoji) => (
+              <button
+                type="button"
+                key={emoji}
+                onClick={() => {
+                  onChange(emoji);
+                  setOpen(false);
+                }}
+                aria-label={`Use ${emoji}`}
+                aria-pressed={value === emoji}
+                className="aspect-square rounded-lg text-xl flex items-center justify-center hover:bg-[--gold-bg]"
+                style={{ outline: value === emoji ? "1px solid var(--gold)" : "none" }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            aria-label="Custom emoji"
+            placeholder="Or type/paste any emoji"
+            className="mt-3 w-full bg-[--bg-input] border border-[--border] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[--gold-border]"
+            maxLength={8}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SettingsInner() {
   const [user, setUser] = useState<User | null>(null);
@@ -441,12 +512,9 @@ function SettingsInner() {
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <input
+                  <EmojiPicker
                     value={trackerDraft.emoji}
-                    onChange={(event) => setTrackerDraft((draft) => ({ ...draft, emoji: event.target.value }))}
-                    aria-label="Emoji"
-                    className="w-14 bg-[--bg-input] border border-[--border] rounded-lg px-2 py-2.5 text-center focus:outline-none focus:border-[--gold-border]"
-                    maxLength={8}
+                    onChange={(emoji) => setTrackerDraft((draft) => ({ ...draft, emoji }))}
                   />
                   <input
                     value={trackerDraft.label}
