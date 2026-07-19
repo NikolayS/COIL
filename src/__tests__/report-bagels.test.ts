@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateEmailHtml, generatePlainReport, generatePlainReportHtml, generateReport, type WeekData } from "@/lib/report";
-import { generateReportPdf } from "@/lib/generatePdf";
+import { PDFDocument } from "pdf-lib";
+import { generateConsolidatedReportPdf, generateReportPdf } from "@/lib/generatePdf";
 import { DEFAULT_TRACKERS, type TrackerSettings } from "@/lib/tracking";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
@@ -83,6 +84,20 @@ describe("bagel tracking in report outputs", () => {
   it("generates the PDF with tracker-aware data", async () => {
     const pdf = await generateReportPdf(makeWeek(), { trackers: DEFAULT_TRACKERS });
     expect(pdf.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("combines multiple weekly reports behind a cover page", async () => {
+    const first = makeWeek();
+    const second = makeWeek();
+    second.weekOf = "2025-01-13T00:00:00.000Z";
+    const pdf = await generateConsolidatedReportPdf(
+      [first, second],
+      { label: "January 2025", start: "2025-01-01", end: "2025-01-31" },
+    );
+    const document = await PDFDocument.load(pdf);
+    const firstReport = await PDFDocument.load(await generateReportPdf(first));
+    const secondReport = await PDFDocument.load(await generateReportPdf(second));
+    expect(document.getPageCount()).toBe(1 + firstReport.getPageCount() + secondReport.getPageCount());
   });
 
   it("summarizes custom count and rating trackers", () => {

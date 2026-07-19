@@ -13,6 +13,7 @@ type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
 type TabKey = "daily" | "weekly" | "export" | "past";
+type ReviewPeriod = "month" | "quarter" | "ytd" | "year" | "custom";
 
 interface DayData {
   territories: Record<TerritoryKey, boolean>;
@@ -77,6 +78,43 @@ const DAY_LABELS: Record<string, string> = {
 const TOTAL_POSSIBLE = 35; // 5 territories × 7 days
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function reviewPeriodRange(
+  period: ReviewPeriod,
+  options: { month: string; quarter: number; year: number; customStart: string; customEnd: string },
+): { start: string; end: string; label: string } {
+  if (period === "custom") {
+    return { start: options.customStart, end: options.customEnd, label: "Custom Review" };
+  }
+  if (period === "month") {
+    const [year, month] = options.month.split("-").map(Number);
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 0));
+    return {
+      start: isoDate(start),
+      end: isoDate(end),
+      label: start.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
+    };
+  }
+  if (period === "quarter") {
+    const start = new Date(Date.UTC(options.year, (options.quarter - 1) * 3, 1));
+    const end = new Date(Date.UTC(options.year, options.quarter * 3, 0));
+    return { start: isoDate(start), end: isoDate(end), label: `Q${options.quarter} ${options.year}` };
+  }
+  const start = new Date(Date.UTC(options.year, 0, 1));
+  const end = period === "ytd" && options.year === new Date().getUTCFullYear()
+    ? new Date()
+    : new Date(Date.UTC(options.year, 11, 31));
+  return {
+    start: isoDate(start),
+    end: isoDate(end),
+    label: period === "ytd" ? `${options.year} Year to Date` : `${options.year} Annual Review`,
+  };
+}
 
 function getMondayOfWeek(date: Date): Date {
   return getWeekStart(date, "monday");
@@ -845,6 +883,16 @@ function ExportTab({
   const [emailSending, setEmailSending] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const initialDate = new Date(data.weekOf.includes("T") ? data.weekOf : `${data.weekOf}T12:00:00Z`);
+  const initialYear = initialDate.getUTCFullYear();
+  const [reviewPeriod, setReviewPeriod] = useState<ReviewPeriod>("month");
+  const [reviewMonth, setReviewMonth] = useState(data.weekOf.slice(0, 7));
+  const [reviewQuarter, setReviewQuarter] = useState(Math.floor(initialDate.getUTCMonth() / 3) + 1);
+  const [reviewYear, setReviewYear] = useState(initialYear);
+  const [customStart, setCustomStart] = useState(`${initialYear}-01-01`);
+  const [customEnd, setCustomEnd] = useState(isoDate(new Date()));
+  const [reviewDownloading, setReviewDownloading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const report = generateReport(data, trackerSettings);
 
   const handleSendEmail = async () => {
@@ -901,6 +949,36 @@ function ExportTab({
     downloadSqlDump(user, supabase);
   };
 
+  const handleConsolidatedPdf = async () => {
+    const range = reviewPeriodRange(reviewPeriod, {
+      month: reviewMonth, quarter: reviewQuarter, year: reviewYear, customStart, customEnd,
+    });
+    if (!range.start || !range.end || range.start > range.end) {
+      setReviewError("Choose a valid date range.");
+      return;
+    }
+    setReviewDownloading(true);
+    setReviewError(null);
+    try {
+      const params = new URLSearchParams({ start: range.start, end: range.end, label: range.label });
+      const response = await fetch(`/api/pdf/consolidated?${params}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Could not generate the review PDF");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `coil-review-${range.start}-${range.end}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not generate the review PDF");
+    } finally {
+      setReviewDownloading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -935,6 +1013,92 @@ function ExportTab({
             <Download size={16} />
             Download PDF
           </button>
+        )}
+        {user && (
+          <div className="mt-2 rounded-2xl border border-[--border] p-3 space-y-2">
+            <p className="text-xs text-[--text-faint] font-mono uppercase tracking-[0.1em]">Consolidated Review PDF</p>
+            <select
+              aria-label="Review period"
+              value={reviewPeriod}
+              onChange={(event) => setReviewPeriod(event.target.value as ReviewPeriod)}
+              className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+            >
+              <option value="month">Month</option>
+              <option value="quarter">Quarter</option>
+              <option value="ytd">Year to date</option>
+              <option value="year">Whole year</option>
+              <option value="custom">Custom range</option>
+            </select>
+            {reviewPeriod === "month" && (
+              <input
+                aria-label="Review month"
+                type="month"
+                value={reviewMonth}
+                onChange={(event) => setReviewMonth(event.target.value)}
+                className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+              />
+            )}
+            {reviewPeriod === "quarter" && (
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  aria-label="Review quarter"
+                  value={reviewQuarter}
+                  onChange={(event) => setReviewQuarter(Number(event.target.value))}
+                  className="rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+                >
+                  {[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Q{quarter}</option>)}
+                </select>
+                <input
+                  aria-label="Review year"
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={reviewYear}
+                  onChange={(event) => setReviewYear(Number(event.target.value))}
+                  className="rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+                />
+              </div>
+            )}
+            {(reviewPeriod === "ytd" || reviewPeriod === "year") && (
+              <input
+                aria-label="Review year"
+                type="number"
+                min="2000"
+                max="2100"
+                value={reviewYear}
+                onChange={(event) => setReviewYear(Number(event.target.value))}
+                className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+              />
+            )}
+            {reviewPeriod === "custom" && (
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  aria-label="Review start date"
+                  type="date"
+                  value={customStart}
+                  onChange={(event) => setCustomStart(event.target.value)}
+                  className="rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+                />
+                <input
+                  aria-label="Review end date"
+                  type="date"
+                  value={customEnd}
+                  onChange={(event) => setCustomEnd(event.target.value)}
+                  className="rounded-xl border border-[--border] bg-[--bg-input] px-3 py-3 text-sm text-[--text]"
+                />
+              </div>
+            )}
+            <button
+              onClick={handleConsolidatedPdf}
+              disabled={reviewDownloading}
+              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl font-mono text-xs tracking-[0.1em] uppercase font-medium transition-all active:scale-[0.98] disabled:opacity-40"
+              style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
+            >
+              <Download size={15} />
+              {reviewDownloading ? "Building PDF…" : "Download Consolidated PDF"}
+            </button>
+            {reviewError && <p className="text-center text-xs" style={{ color: "var(--error, #e55)" }}>{reviewError}</p>}
+          </div>
         )}
         {user && (
           <div className="mt-2">
