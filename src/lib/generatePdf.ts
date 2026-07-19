@@ -372,3 +372,54 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
 
   return doc.save();
 }
+
+export async function generateConsolidatedReportPdf(
+  weeks: WeekData[],
+  period: { label: string; start: string; end: string },
+  settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS,
+): Promise<Uint8Array> {
+  if (weeks.length === 0) throw new Error("At least one week is required");
+
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(fs.readFileSync(fontPath("LiberationSans-Regular.ttf")));
+  const bold = await doc.embedFont(fs.readFileSync(fontPath("LiberationSans-Bold.ttf")));
+  const cover = doc.addPage([595, 842]);
+  const margin = 54;
+
+  cover.drawText("COIL", { x: margin, y: 742, font: bold, size: 32, color: COLORS.primary });
+  cover.drawText("Consolidated Review", { x: margin, y: 694, font: bold, size: 24, color: COLORS.dark });
+  cover.drawText(period.label, { x: margin, y: 655, font: regular, size: 17, color: COLORS.mid });
+  cover.drawLine({
+    start: { x: margin, y: 628 },
+    end: { x: 595 - margin, y: 628 },
+    thickness: 1,
+    color: COLORS.primary,
+  });
+
+  const formatDate = (value: string) => new Date(`${value}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "long", day: "numeric", year: "numeric", timeZone: "UTC",
+  });
+  cover.drawText(`${weeks.length} weekly report${weeks.length === 1 ? "" : "s"}`, {
+    x: margin, y: 586, font: bold, size: 14, color: COLORS.dark,
+  });
+  cover.drawText(`${formatDate(period.start)} - ${formatDate(period.end)}`, {
+    x: margin, y: 558, font: regular, size: 11, color: COLORS.mid,
+  });
+  cover.drawText("Reports are ordered chronologically, oldest first.", {
+    x: margin, y: 520, font: regular, size: 10, color: COLORS.mid,
+  });
+
+  for (const week of weeks) {
+    const weeklyPdf = await PDFDocument.load(await generateReportPdf(week, settings));
+    const pages = await doc.copyPages(weeklyPdf, weeklyPdf.getPageIndices());
+    pages.forEach((page) => doc.addPage(page));
+  }
+
+  const generated = new Date().toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  cover.drawText(`COIL - coil.5am.team  |  Generated ${generated}`, {
+    x: margin, y: 24, font: regular, size: 8, color: COLORS.mid,
+  });
+
+  return doc.save();
+}
