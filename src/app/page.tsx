@@ -1015,6 +1015,25 @@ function ExportTab({
           </button>
         )}
         {user && (
+          <div className="mt-2">
+            <button
+              onClick={handleSendEmail}
+              disabled={emailSending}
+              className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
+            >
+              <Mail size={16} />
+              {emailSending ? "Sending…" : "Send Email"}
+            </button>
+            {emailResult && (
+              <p className="text-center text-xs font-mono text-[--text-faint] mt-1.5">{emailResult}</p>
+            )}
+            {emailError && (
+              <p className="text-center text-xs font-mono mt-1.5" style={{ color: "var(--error, #e55)" }}>{emailError}</p>
+            )}
+          </div>
+        )}
+        {user && (
           <div className="mt-2 rounded-2xl border border-[--border] p-3 space-y-2">
             <p className="text-xs text-[--text-faint] font-mono uppercase tracking-[0.1em]">Consolidated Review PDF</p>
             <select
@@ -1098,25 +1117,6 @@ function ExportTab({
               {reviewDownloading ? "Building PDF…" : "Download Consolidated PDF"}
             </button>
             {reviewError && <p className="text-center text-xs" style={{ color: "var(--error, #e55)" }}>{reviewError}</p>}
-          </div>
-        )}
-        {user && (
-          <div className="mt-2">
-            <button
-              onClick={handleSendEmail}
-              disabled={emailSending}
-              className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
-              style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
-            >
-              <Mail size={16} />
-              {emailSending ? "Sending…" : "Send Email"}
-            </button>
-            {emailResult && (
-              <p className="text-center text-xs font-mono text-[--text-faint] mt-1.5">{emailResult}</p>
-            )}
-            {emailError && (
-              <p className="text-center text-xs font-mono mt-1.5" style={{ color: "var(--error, #e55)" }}>{emailError}</p>
-            )}
           </div>
         )}
       </div>
