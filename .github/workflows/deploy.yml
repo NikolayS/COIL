@@ -78,12 +78,58 @@ jobs:
 
             # Apply DB migrations (idempotent)
             cat > /tmp/migrate.sql << 'EOF'
+            create table if not exists public.cycles (
+              id uuid primary key default public.uuid_generate_v7(),
+              user_id uuid not null,
+              starts_on date not null,
+              ends_on date not null,
+              must_win text not null default '',
+              territories jsonb not null default '{}'::jsonb,
+              status text not null default 'active'
+                check (status in ('active', 'completed')),
+              created_at timestamptz not null default now(),
+              updated_at timestamptz not null default now(),
+              check (ends_on >= starts_on),
+              unique (user_id, starts_on, ends_on)
+            );
+            comment on table public.cycles is 'User outcome and keystone-habit plans for intentional living cycles';
+            alter table public.cycles enable row level security;
+
+            create table if not exists public.period_reviews (
+              id uuid primary key default public.uuid_generate_v7(),
+              user_id uuid not null,
+              review_type text not null
+                check (review_type in ('month', 'quarter')),
+              starts_on date not null,
+              ends_on date not null,
+              responses jsonb not null default '{}'::jsonb,
+              snapshot jsonb not null default '{}'::jsonb,
+              created_at timestamptz not null default now(),
+              updated_at timestamptz not null default now(),
+              check (ends_on >= starts_on),
+              unique (user_id, review_type, starts_on)
+            );
+            comment on table public.period_reviews is 'Monthly and quarterly reflections with computed evidence snapshots';
+            alter table public.period_reviews enable row level security;
+
             DO $body$ BEGIN
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='weeks' AND policyname='users see own weeks') THEN
                 CREATE POLICY "users see own weeks" ON public.weeks FOR ALL USING ((select auth.uid()) = user_id);
               END IF;
               IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='settings' AND policyname='users manage own settings') THEN
                 CREATE POLICY "users manage own settings" ON public.settings FOR ALL USING ((select auth.uid()) = user_id);
+              END IF;
+              IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='cycles' AND policyname='users manage own cycles') THEN
+                CREATE POLICY "users manage own cycles" ON public.cycles
+                  FOR ALL
+                  USING ((select auth.uid()) = user_id)
+                  WITH CHECK ((select auth.uid()) = user_id);
+              END IF;
+              IF NOT EXISTS (SELECT FROM pg_policies WHERE tablename='period_reviews' AND policyname='users manage own period reviews') THEN
+                CREATE POLICY "users manage own period reviews" ON public.period_reviews
+                  FOR ALL
+                  USING ((select auth.uid()) = user_id)
+                  WITH CHECK ((select auth.uid()) = user_id);
               END IF;
               IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name='settings' AND column_name='weekly_email_day') THEN
                 ALTER TABLE public.settings ADD COLUMN weekly_email_day text DEFAULT 'sunday';
@@ -115,6 +161,8 @@ jobs:
             END $body$;
             GRANT ALL ON public.weeks TO authenticated;
             GRANT ALL ON public.settings TO authenticated;
+            grant all on public.cycles to authenticated;
+            grant all on public.period_reviews to authenticated;
             SELECT pg_notify('pgrst', 'reload schema');
             EOF
             docker cp /tmp/migrate.sql supabase-db-1:/tmp/migrate.sql
@@ -134,7 +182,7 @@ jobs:
           echo "COIL_APP_NEXT_PUBLIC_APP_URL=${{ secrets.COIL_APP_NEXT_PUBLIC_APP_URL }}" >> $GITHUB_ENV
           echo "COIL_APP_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.COIL_APP_SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
           echo "COIL_APP_RESEND_API_KEY=${{ secrets.COIL_APP_RESEND_API_KEY }}" >> $GITHUB_ENV
-          echo "COIL_APP_CRON_SECRET=${{ secrets.COIL_APP_CRON_SECRET }}" >> $GITHUB_ENV
+          echo "COIL_APP_CRON_SECRET=${{ secrets.CRON_SECRET }}" >> $GITHUB_ENV
       - name: Write env file, build and deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
