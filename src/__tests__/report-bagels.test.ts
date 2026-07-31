@@ -114,4 +114,37 @@ describe("bagel tracking in report outputs", () => {
     expect(report).toContain("## Energy Tracking ⚡");
     expect(report).toContain("**3.0/5 avg**");
   });
+
+  it("includes commitments, Basics, and the next priority", () => {
+    const week = makeWeek();
+    Object.assign(week.days.mon, {
+      commitments: {
+        self: "Read for 30 minutes",
+        health: "Train",
+        wealth: "",
+        relationships: "",
+        business: "Ship proposal",
+      },
+      basics: { ars: true, ad: false, workout: true, cfo: false },
+      tomorrowPriority: "Close the deal",
+    });
+    Object.assign(week.weekly, {
+      priorities: {
+        self: "Finish the book",
+        health: "",
+        wealth: "",
+        relationships: "",
+        business: "Win the account",
+      },
+      criticalActions: ["Send proposal", "Call buyer", ""],
+    });
+
+    const report = generateReport(week);
+    expect(report).toContain("## Weekly Plan");
+    expect(report).toContain("**Self:** Finish the book");
+    expect(report).toContain("**Critical actions:** Send proposal; Call buyer");
+    expect(report).toContain("**Self commitment:** Read for 30 minutes");
+    expect(report).toContain("**Basics:** ARS, Workout");
+    expect(report).toContain("**Tomorrow's #1:** Close the deal");
+  });
 });

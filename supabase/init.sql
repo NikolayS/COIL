@@ -94,3 +94,61 @@ create policy "users manage own settings" on public.settings
   for all using ((select auth.uid()) = user_id);
 
 grant all on public.settings to authenticated;
+
+-- Intentional living cycles
+create table if not exists public.cycles (
+  id uuid primary key default public.uuid_generate_v7(),
+  user_id uuid not null,
+  starts_on date not null,
+  ends_on date not null,
+  must_win text not null default '',
+  territories jsonb not null default '{}'::jsonb,
+  status text not null default 'active'
+    check (status in ('active', 'completed')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (ends_on >= starts_on),
+  unique (user_id, starts_on, ends_on)
+);
+
+comment on table public.cycles is 'User outcome and keystone-habit plans for intentional living cycles';
+comment on column public.cycles.territories is 'Outcome and keystone habit keyed by territory';
+comment on column public.cycles.status is 'Cycle status: active, completed';
+
+alter table public.cycles enable row level security;
+
+create policy "users manage own cycles" on public.cycles
+  for all
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+grant all on public.cycles to authenticated;
+
+-- Monthly and quarterly reviews
+create table if not exists public.period_reviews (
+  id uuid primary key default public.uuid_generate_v7(),
+  user_id uuid not null,
+  review_type text not null
+    check (review_type in ('month', 'quarter')),
+  starts_on date not null,
+  ends_on date not null,
+  responses jsonb not null default '{}'::jsonb,
+  snapshot jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (ends_on >= starts_on),
+  unique (user_id, review_type, starts_on)
+);
+
+comment on table public.period_reviews is 'Monthly and quarterly reflections with computed evidence snapshots';
+comment on column public.period_reviews.review_type is 'Review period: month, quarter';
+comment on column public.period_reviews.snapshot is 'Scores and territory totals captured when the review is saved';
+
+alter table public.period_reviews enable row level security;
+
+create policy "users manage own period reviews" on public.period_reviews
+  for all
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+grant all on public.period_reviews to authenticated;
