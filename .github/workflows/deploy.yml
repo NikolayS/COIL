@@ -182,7 +182,7 @@ jobs:
           echo "COIL_APP_NEXT_PUBLIC_APP_URL=${{ secrets.COIL_APP_NEXT_PUBLIC_APP_URL }}" >> $GITHUB_ENV
           echo "COIL_APP_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.COIL_APP_SUPABASE_SERVICE_ROLE_KEY }}" >> $GITHUB_ENV
           echo "COIL_APP_RESEND_API_KEY=${{ secrets.COIL_APP_RESEND_API_KEY }}" >> $GITHUB_ENV
-          echo "COIL_APP_CRON_SECRET=${{ secrets.CRON_SECRET }}" >> $GITHUB_ENV
+          echo "COIL_APP_CRON_SECRET=${{ secrets.COIL_APP_CRON_SECRET }}" >> $GITHUB_ENV
       - name: Write env file, build and deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
