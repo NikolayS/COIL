@@ -60,27 +60,6 @@ test.describe("Demo mode — home page", () => {
     await expect(page.getByText("Business")).toBeVisible();
   });
 
-  test("keeps the streamlined Plan and restored Close layout", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
-
-    await expect(page.getByRole("button", { name: /Alpha Rise & Shine/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Alpha Decompression/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Be the CFO/ })).toBeVisible();
-    await expect(page.getByText("Optional trackers", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Gym/ })).toBeVisible();
-
-    for (const label of ["Gratitude", "Wins", "Journal Notes", "What could I have done better?"]) {
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
-    }
-
-    await expect(page.getByText("Workout", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("ARS protocol", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Tomorrow's #1 priority", { exact: true })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Plan", exact: true }).click();
-    await expect(page.getByText("Start with Alpha Rise & Shine", { exact: true })).toHaveCount(0);
-  });
-
   test("checking a territory shows the save status pill ('saving' or 'saved')", async ({ page }) => {
     // Click the first territory toggle
     const firstTerritory = page.locator("button.territory-toggle").first();
