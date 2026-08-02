@@ -81,13 +81,27 @@ describe("intentional data migration", () => {
   it("preserves existing intentional daily values", () => {
     const migrated = migrateDayIntentions({
       commitments: { self: "Read", health: "Train" },
-      basics: { ars: true },
+      basics: { ars: true, ad: true, workout: true, cfo: true },
+      arsSteps: {
+        outsideWithoutScreens: true,
+        walk: true,
+        meditate: true,
+        reviewPreviousDay: true,
+        reviewTodayGoals: true,
+      },
       tomorrowPriority: "Ship the proposal",
     });
 
     expect(migrated.commitments.self).toBe("Read");
     expect(migrated.commitments.health).toBe("Train");
-    expect(migrated.basics.ars).toBe(true);
+    expect(migrated.basics).toEqual({ ars: true, ad: true, workout: true, cfo: true });
+    expect(migrated.arsSteps).toEqual({
+      outsideWithoutScreens: true,
+      walk: true,
+      meditate: true,
+      reviewPreviousDay: true,
+      reviewTodayGoals: true,
+    });
     expect(migrated.tomorrowPriority).toBe("Ship the proposal");
   });
 

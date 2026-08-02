@@ -479,17 +479,8 @@ function CommitmentRow({
 
 const BASIC_ITEMS: { key: keyof DailyIntentions["basics"]; label: string }[] = [
   { key: "ars", label: "Alpha Rise & Shine" },
-  { key: "ad", label: "AD" },
-  { key: "workout", label: "Workout" },
+  { key: "ad", label: "Alpha Decompression" },
   { key: "cfo", label: "Be the CFO" },
-];
-
-const ARS_STEPS: { key: keyof DailyIntentions["arsSteps"]; label: string }[] = [
-  { key: "outsideWithoutScreens", label: "Go outside without screens" },
-  { key: "walk", label: "Walk" },
-  { key: "meditate", label: "Meditate" },
-  { key: "reviewPreviousDay", label: "Review the previous day" },
-  { key: "reviewTodayGoals", label: "Review today's goals" },
 ];
 
 function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfModes) => void }) {
@@ -744,24 +735,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
     updateDay({ commitments: { ...dayData.commitments, [key]: value } });
   };
   const toggleBasic = (key: keyof DailyIntentions["basics"]) => {
-    const nextValue = !dayData.basics[key];
-    if (key === "ars") {
-      updateDay({
-        basics: { ...dayData.basics, ars: nextValue },
-        arsSteps: Object.fromEntries(
-          ARS_STEPS.map((step) => [step.key, nextValue]),
-        ) as DailyIntentions["arsSteps"],
-      });
-      return;
-    }
-    updateDay({ basics: { ...dayData.basics, [key]: nextValue } });
-  };
-  const toggleArsStep = (key: keyof DailyIntentions["arsSteps"]) => {
-    const arsSteps = { ...dayData.arsSteps, [key]: !dayData.arsSteps[key] };
-    updateDay({
-      arsSteps,
-      basics: { ...dayData.basics, ars: Object.values(arsSteps).every(Boolean) },
-    });
+    updateDay({ basics: { ...dayData.basics, [key]: !dayData.basics[key] } });
   };
 
   return (
@@ -841,22 +815,6 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
 
       {phase === "plan" ? (
         <div className={`space-y-3 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
-          <details className="rounded-xl border border-[--gold-border] bg-[--gold-bg] px-4 py-3">
-            <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--gold]">
-              {dayData.basics.ars ? "✓ ARS complete" : "Start with Alpha Rise & Shine"}
-            </summary>
-            <div className="mt-3 space-y-2">
-              {ARS_STEPS.map((step) => (
-                <BooleanTrackerRow
-                  key={step.key}
-                  label={step.label}
-                  emoji="·"
-                  checked={dayData.arsSteps[step.key]}
-                  onToggle={() => toggleArsStep(step.key)}
-                />
-              ))}
-            </div>
-          </details>
           {carriedPriority && (
             <div className="rounded-xl border border-[--gold-border] bg-[--gold-bg] px-4 py-3">
               <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-[--gold]">Carried from yesterday</p>
@@ -905,36 +863,18 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
                 <BooleanTrackerRow
                   key={item.key}
                   label={item.label}
-                  emoji={item.key === "ars" ? "🌅" : item.key === "workout" ? "🏋️" : item.key === "cfo" ? "📈" : "⚡"}
+                  emoji={item.key === "ars" ? "🌅" : item.key === "cfo" ? "📈" : "⚡"}
                   checked={dayData.basics[item.key]}
                   onToggle={() => toggleBasic(item.key)}
                 />
               ))}
             </div>
-            <details className="mt-2 rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
-              <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
-                ARS protocol
-              </summary>
-              <div className="mt-3 space-y-2">
-                {ARS_STEPS.map((step) => (
-                  <BooleanTrackerRow
-                    key={step.key}
-                    label={step.label}
-                    emoji="·"
-                    checked={dayData.arsSteps[step.key]}
-                    onToggle={() => toggleArsStep(step.key)}
-                  />
-                ))}
-              </div>
-            </details>
           </div>
 
           {activeTrackers.length > 0 && (
-            <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
-              <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">
-                Optional trackers
-              </summary>
-              <div className="mt-4 space-y-2">
+            <div>
+              <p className="mb-3 text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Optional trackers</p>
+              <div className="space-y-2">
                 {activeTrackers.map((tracker) => {
                   const value = getTrackerValue(dayData as unknown as Record<string, unknown>, tracker);
                   const setValue = (next: TrackerValue) => updateDay({ trackers: { ...dayData.trackers, [tracker.id]: next } });
@@ -972,47 +912,34 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
                   );
                 })}
               </div>
-            </details>
+            </div>
           )}
 
           <div className="space-y-4">
             <JournalField
-              label="What are you grateful for?"
-              placeholder="Name something specific..."
+              label="Gratitude"
+              placeholder="What are you grateful for today?"
               value={dayData.gratitude}
               onChange={(gratitude) => updateDay({ gratitude })}
             />
             <JournalField
-              label="What could you have done better?"
+              label="Wins"
+              placeholder="What did you win today?"
+              value={dayData.wins}
+              onChange={(wins) => updateDay({ wins })}
+            />
+            <JournalField
+              label="Journal Notes"
+              placeholder="Challenges, what happened today..."
+              value={dayData.journal}
+              onChange={(journal) => updateDay({ journal })}
+            />
+            <JournalField
+              label="What could I have done better?"
               placeholder="Reflect honestly..."
               value={dayData.reflection}
               onChange={(reflection) => updateDay({ reflection })}
             />
-            <JournalField
-              label="Tomorrow's #1 priority"
-              placeholder="The one thing that must happen tomorrow..."
-              value={dayData.tomorrowPriority}
-              onChange={(tomorrowPriority) => updateDay({ tomorrowPriority })}
-            />
-            <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
-              <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
-                Wins & free notes
-              </summary>
-              <div className="mt-4 space-y-4">
-                <JournalField
-                  label="Wins"
-                  placeholder="What did you win today?"
-                  value={dayData.wins}
-                  onChange={(wins) => updateDay({ wins })}
-                />
-                <JournalField
-                  label="Free notes"
-                  placeholder="Challenges, ideas, what happened today..."
-                  value={dayData.journal}
-                  onChange={(journal) => updateDay({ journal })}
-                />
-              </div>
-            </details>
           </div>
         </div>
       )}
