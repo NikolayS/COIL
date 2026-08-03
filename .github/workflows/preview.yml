@@ -19,26 +19,38 @@ jobs:
           chmod 600 /tmp/deploy_key
           RESULT=$(ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
             "docker exec -i supabase-db-1 psql -U postgres -d postgres -At" <<'SQL'
-          with day_rows as (
-            select day.value as data
+          with target_user as (
+            select id from auth.users where email = 'nik@postgres.ai' limit 1
+          ), day_rows as (
+            select
+              week.week_of + ((case day.key
+                when 'sun' then 0 when 'mon' then 1 when 'tue' then 2 when 'wed' then 3
+                when 'thu' then 4 when 'fri' then 5 when 'sat' then 6
+              end - extract(dow from week.week_of)::integer + 7) % 7) as day_date,
+              day.value as data
             from public.weeks week
             cross join lateral jsonb_each(week.data->'days') day
-            where week.user_id = (select id from auth.users where email = 'nik@postgres.ai' limit 1)
+            where week.user_id = (select id from target_user)
               and week.week_of >= date '2026-06-28'
               and week.week_of <= date '2026-07-31'
           )
-          select case
-            when coalesce(bool_or(data->>'fasting' = 'true' and data->'trackers'->>'fasting' = 'false'), false)
-              then 'LEGACY_TRUE_MASKED_BY_NESTED_FALSE'
-            when coalesce(bool_or(data->'trackers'->>'fasting' = 'true'), false)
-              then 'NESTED_TRUE_PRESENT'
-            when coalesce(bool_or(data->>'fasting' = 'true'), false)
-              then 'LEGACY_TRUE_PRESENT'
-            when coalesce(bool_or(data ? 'fasting' or data->'trackers' ? 'fasting'), false)
-              then 'ONLY_FALSE_VALUES_STORED'
-            else 'NO_FASTING_VALUES_STORED'
-          end
-          from day_rows;
+          select 'JULY_NESTED_TRUE_DATES=' || count(distinct day_date)
+          from day_rows
+          where day_date between date '2026-07-01' and date '2026-07-31'
+            and data->'trackers'->>'fasting' = 'true'
+          union all
+          select 'JULY_LEGACY_TRUE_DATES=' || count(distinct day_date)
+          from day_rows
+          where day_date between date '2026-07-01' and date '2026-07-31'
+            and data->>'fasting' = 'true'
+          union all
+          select 'FASTING_DEFINITIONS=' || coalesce(string_agg(
+            tracker->>'id' || ':' || coalesce(tracker->>'enabled', 'true'), ',' order by tracker->>'id'
+          ), 'none')
+          from public.settings settings
+          cross join lateral jsonb_array_elements(coalesce(settings.tracker_definitions, '[]'::jsonb)) tracker
+          where settings.user_id = (select id from target_user)
+            and lower(tracker->>'label') = 'fasting';
           SQL
           )
           echo "FASTING_STORAGE_RESULT=${RESULT}"
