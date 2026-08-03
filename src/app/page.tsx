@@ -8,10 +8,13 @@ import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSett
 import {
   TERRITORY_KEYS,
   createDefaultCycle,
+  defaultDailyPhase,
   getReviewPeriod,
+  isDailyPhaseLocked,
   migrateDayIntentions,
   migrateWeeklyIntentions,
   type CycleData,
+  type DailyPhase,
   type DailyIntentions,
   type ReviewData,
   type ReviewType,
@@ -392,14 +395,21 @@ function PhaseSwitch<T extends string>({
   value,
   options,
   onChange,
+  prominent = false,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
+  prominent?: boolean;
 }) {
   return (
-    <div className="grid gap-1 rounded-xl border border-[--border] bg-[--bg-card] p-1"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+    <div
+      className={`grid gap-1 rounded-xl bg-[--bg-card] ${prominent ? "border-2 p-1.5" : "border p-1"}`}
+      style={{
+        gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
+        borderColor: prominent ? "var(--gold-border)" : "var(--border)",
+      }}
+    >
       {options.map((option) => {
         const active = value === option.value;
         return (
@@ -407,10 +417,12 @@ function PhaseSwitch<T extends string>({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className="rounded-lg px-3 py-2 text-xs font-mono uppercase tracking-[0.12em] transition-colors"
+            aria-pressed={active}
+            className={`rounded-lg px-3 font-mono uppercase tracking-[0.12em] transition-all ${prominent ? "py-3 text-sm font-bold" : "py-2 text-xs"}`}
             style={{
-              color: active ? "var(--gold)" : "var(--text-dim)",
-              backgroundColor: active ? "var(--gold-bg)" : "transparent",
+              color: active ? (prominent ? "var(--bg)" : "var(--gold)") : "var(--text-dim)",
+              backgroundColor: active ? (prominent ? "var(--gold)" : "var(--gold-bg)") : "transparent",
+              boxShadow: active && prominent ? "0 2px 8px color-mix(in srgb, var(--gold) 30%, transparent)" : "none",
             }}
           >
             {option.label}
@@ -677,8 +689,13 @@ function JournalField({
 function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
-  const [phase, setPhase] = useState<"plan" | "close">("plan");
+  const [phase, setPhase] = useState<DailyPhase>(weekOffset < 0 ? "close" : "plan");
   const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setActiveDay(weekOffset < 0 ? "sun" : todayKey);
+    setPhase(weekOffset < 0 ? "close" : "plan");
+  }, [weekOffset, todayKey]);
 
   const dayData = data.days[activeDay] ?? emptyDayData();
   const activeTrackers = enabledTrackers(trackerSettings);
@@ -701,8 +718,9 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
 
   const activeDayAgo = daysAgo(activeDay);
   const isFuture = activeDayAgo < 0;
-  const isOldAndLocked = activeDayAgo >= 2 && !editUnlocked[`${weekOffset}:${activeDay}`];
-  const isLocked = isOldAndLocked || (phase === "close" && isFuture);
+  const isUnlocked = Boolean(editUnlocked[`${weekOffset}:${activeDay}`]);
+  const isLocked = isDailyPhaseLocked(activeDayAgo, phase, isUnlocked);
+  const canUnlock = activeDayAgo > 0 && !isUnlocked;
   const orderedDays = weekStart === "sunday"
     ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
     : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -747,6 +765,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
           { value: "close", label: "Close" },
         ]}
         onChange={setPhase}
+        prominent
       />
 
       {/* Day picker */}
@@ -760,7 +779,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
               key={day}
               onClick={() => {
                 setActiveDay(day);
-                if (daysAgo(day) < 0) setPhase("plan");
+                setPhase(defaultDailyPhase(daysAgo(day)));
               }}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
@@ -799,9 +818,13 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
         <div className="flex items-center justify-between rounded-xl px-4 py-3 border"
           style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border)" }}>
           <span className="text-xs font-mono text-[--text-muted]">
-            {isFuture ? "🔒 Plan now; close this day after it happens" : `🔒 ${activeDayAgo} days ago \u2014 read-only`}
+            {isFuture
+              ? "🔒 Plan now; close this day after it happens"
+              : phase === "plan"
+                ? `🔒 Past plan — ${activeDayAgo} ${activeDayAgo === 1 ? "day" : "days"} ago`
+                : `🔒 ${activeDayAgo} days ago — read-only`}
           </span>
-          {isOldAndLocked && (
+          {canUnlock && (
             <button
               onClick={unlockDay}
               className="text-xs font-mono px-3 py-1 rounded-lg transition-colors"

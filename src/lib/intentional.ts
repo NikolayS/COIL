@@ -44,6 +44,7 @@ export interface WeeklyIntentions {
 }
 
 export type ReviewType = "month" | "quarter";
+export type DailyPhase = "plan" | "close";
 
 export interface ReviewPeriod {
   startsOn: string;
@@ -53,6 +54,16 @@ export interface ReviewPeriod {
 
 export interface ReviewData {
   responses: Record<string, string>;
+}
+
+export function defaultDailyPhase(daysAgo: number): DailyPhase {
+  return daysAgo > 0 ? "close" : "plan";
+}
+
+export function isDailyPhaseLocked(daysAgo: number, phase: DailyPhase, unlocked: boolean): boolean {
+  if (unlocked) return false;
+  if (phase === "plan") return daysAgo > 0;
+  return daysAgo < 0 || daysAgo >= 2;
 }
 
 export function emptyTerritoryText(): Record<TerritoryKey, string> {

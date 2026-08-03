@@ -1,10 +1,34 @@
 import { describe, expect, it } from "vitest";
 import {
   createDefaultCycle,
+  defaultDailyPhase,
   getReviewPeriod,
+  isDailyPhaseLocked,
   migrateDayIntentions,
   migrateWeeklyIntentions,
 } from "@/lib/intentional";
+
+describe("daily Plan/Close phase", () => {
+  it("defaults past days to Close and current/future days to Plan", () => {
+    expect(defaultDailyPhase(7)).toBe("close");
+    expect(defaultDailyPhase(1)).toBe("close");
+    expect(defaultDailyPhase(0)).toBe("plan");
+    expect(defaultDailyPhase(-1)).toBe("plan");
+  });
+
+  it("locks Plan for every past day until explicitly unlocked", () => {
+    expect(isDailyPhaseLocked(1, "plan", false)).toBe(true);
+    expect(isDailyPhaseLocked(7, "plan", false)).toBe(true);
+    expect(isDailyPhaseLocked(1, "plan", true)).toBe(false);
+  });
+
+  it("keeps future Close and older Close entries protected", () => {
+    expect(isDailyPhaseLocked(-1, "close", false)).toBe(true);
+    expect(isDailyPhaseLocked(1, "close", false)).toBe(false);
+    expect(isDailyPhaseLocked(2, "close", false)).toBe(true);
+    expect(isDailyPhaseLocked(2, "close", true)).toBe(false);
+  });
+});
 
 describe("createDefaultCycle", () => {
   it("creates a 30-day inclusive cycle", () => {
