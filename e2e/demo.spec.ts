@@ -165,6 +165,7 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("past weeks open the Week tab on Review by default", async ({ page }) => {
+    test.skip(RUNS_AGAINST_PRODUCTION, "Past-week defaults are verified against the PR preview until merged");
     await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
     await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
 
