@@ -260,7 +260,7 @@ export function buildMonthlyEvidence(
     trackers: enabledTrackers(trackerSettings).map((tracker) => {
       const values = tracked.map((day) => getTrackerValue(day.data as Record<string, unknown>, tracker));
       const summary = tracker.type === "boolean"
-        ? `${values.filter(Boolean).length}/${tracked.length}`
+        ? `${values.filter(Boolean).length}/${elapsedDays}`
         : tracker.type === "rating"
           ? (() => {
               const rated = values.map(Number).filter((value) => value > 0);

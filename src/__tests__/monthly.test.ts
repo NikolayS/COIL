@@ -94,6 +94,20 @@ describe("monthly evidence", () => {
     expect(evidence.wins).toEqual([{ date: "2026-07-28", text: "Shipped the release" }]);
   });
 
+  it("uses calendar days, not tracked days, for boolean tracker frequency", () => {
+    const evidence = buildMonthlyEvidence([{
+      weekOf: "2026-07-27",
+      days: {
+        mon: day(),
+        tue: day({ trackers: { gym: true } }),
+        wed: day({ journal: "Tracked without gym" }),
+      },
+    }], "2026-07", DEFAULT_TRACKER_SETTINGS, "2026-07-31");
+
+    expect(evidence.trackedDays).toBe(2);
+    expect(evidence.trackers.find((tracker) => tracker.id === "gym")?.summary).toBe("1/31");
+  });
+
   it("generates a complete monthly PDF even when no goals were set", async () => {
     const review = decodeStoredReview({
       proud: "Shipped the release",
