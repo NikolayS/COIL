@@ -498,7 +498,7 @@ export async function generateMonthlyReviewPdf(input: {
   section("Evidence by territory");
   for (const key of TERRITORY_KEYS) {
     const label = key.charAt(0).toUpperCase() + key.slice(1);
-    text(`${label}: ${input.evidence.territoryTotals[key]}/${input.evidence.trackedDays} days | Commitments ${input.evidence.commitmentsCompleted[key]}/${input.evidence.commitmentsPlanned[key]}`, { size: 10, gap: 2 });
+    text(`${label}: ${input.evidence.territoryTotals[key]}/${input.evidence.elapsedDays} days | Commitments ${input.evidence.commitmentsCompleted[key]}/${input.evidence.commitmentsPlanned[key]}`, { size: 10, gap: 2 });
   }
   text(`Basics: ARS ${input.evidence.basics.ars} | Alpha Decompression ${input.evidence.basics.ad} | CFO ${input.evidence.basics.cfo}`, { size: 10, gap: 4 });
   for (const tracker of input.evidence.trackers) text(`${tracker.label}: ${tracker.summary}`, { size: 10, gap: 1 });

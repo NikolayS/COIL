@@ -2065,7 +2065,7 @@ function ReviewTab({
                   <div className="flex items-center justify-between text-sm">
                     <span style={{ color: territory.color }}>{territory.label}</span>
                     <span className="font-mono text-xs text-[--text-muted]">
-                      {monthlyEvidence.territoryTotals[territory.key]}/{monthlyEvidence.trackedDays}
+                      {monthlyEvidence.territoryTotals[territory.key]}/{monthlyEvidence.elapsedDays}
                     </span>
                   </div>
                   <p className="mt-0.5 text-[11px] text-[--text-faint]">
