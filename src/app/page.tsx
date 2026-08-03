@@ -986,8 +986,13 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings }) {
-  const [phase, setPhase] = useState<"plan" | "review">("plan");
+function WeeklyTab({ data, onChange, trackerSettings, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; weekOffset?: number }) {
+  const [phase, setPhase] = useState<"plan" | "review">(weekOffset < 0 ? "review" : "plan");
+
+  useEffect(() => {
+    setPhase(weekOffset < 0 ? "review" : "plan");
+  }, [weekOffset]);
+
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
   };
@@ -2604,7 +2609,7 @@ export default function CoilApp() {
             <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "week" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} />
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} />
           )}
           {activeTab === "cycle" && (
             <CycleTab user={user} />

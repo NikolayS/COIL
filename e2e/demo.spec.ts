@@ -164,6 +164,16 @@ test.describe("Demo mode — home page", () => {
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
   });
 
+  test("past weeks open the Week tab on Review by default", async ({ page }) => {
+    await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
+    await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByRole("button", { name: "Previous week" }).click();
+
+    await expect(page.getByRole("button", { name: "Review", exact: true }).last()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Territory Breakdown")).toBeVisible();
+  });
+
   test("tab navigation works — Review shows monthly report actions", async ({ page }) => {
     await page.getByRole("button", { name: /^(Review|Export)$/ }).click();
     await expect(page.getByRole("button", { name: /copy (report|for ai chat)/i })).toBeVisible();
