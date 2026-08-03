@@ -13,48 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Diagnose July fasting storage
-        run: |
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          RESULT=$(ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
-            "docker exec -i supabase-db-1 psql -U postgres -d postgres -At" <<'SQL'
-          with target_user as (
-            select id from auth.users where email = 'nik@postgres.ai' limit 1
-          ), day_rows as (
-            select
-              week.week_of + ((case day.key
-                when 'sun' then 0 when 'mon' then 1 when 'tue' then 2 when 'wed' then 3
-                when 'thu' then 4 when 'fri' then 5 when 'sat' then 6
-              end - extract(dow from week.week_of)::integer + 7) % 7) as day_date,
-              day.value as data
-            from public.weeks week
-            cross join lateral jsonb_each(week.data->'days') day
-            where week.user_id = (select id from target_user)
-              and week.week_of >= date '2026-06-28'
-              and week.week_of <= date '2026-07-31'
-          )
-          select 'JULY_NESTED_TRUE_DATES=' || count(distinct day_date)
-          from day_rows
-          where day_date between date '2026-07-01' and date '2026-07-31'
-            and data->'trackers'->>'fasting' = 'true'
-          union all
-          select 'JULY_LEGACY_TRUE_DATES=' || count(distinct day_date)
-          from day_rows
-          where day_date between date '2026-07-01' and date '2026-07-31'
-            and data->>'fasting' = 'true'
-          union all
-          select 'FASTING_DEFINITIONS=' || coalesce(string_agg(
-            tracker->>'id' || ':' || coalesce(tracker->>'enabled', 'true'), ',' order by tracker->>'id'
-          ), 'none')
-          from public.settings settings
-          cross join lateral jsonb_array_elements(coalesce(settings.tracker_definitions, '[]'::jsonb)) tracker
-          where settings.user_id = (select id from target_user)
-            and lower(tracker->>'label') = 'fasting';
-          SQL
-          )
-          echo "FASTING_STORAGE_RESULT=${RESULT}"
-
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
