@@ -13,6 +13,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Create verified pre-migration database backup
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 '
+            set -eu
+            BACKUP_DIR=/opt/coil/backups
+            BACKUP_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+            DUMP_PATH=${BACKUP_DIR}/coil-postgres-${BACKUP_STAMP}.dump
+            ROLES_PATH=${BACKUP_DIR}/coil-postgres-${BACKUP_STAMP}-roles.sql
+            mkdir -p "${BACKUP_DIR}"
+            umask 077
+            docker exec supabase-db-1 pg_dump -U postgres -d postgres -Fc > "${DUMP_PATH}"
+            docker exec supabase-db-1 pg_dumpall -U postgres --globals-only > "${ROLES_PATH}"
+            test -s "${DUMP_PATH}"
+            test -s "${ROLES_PATH}"
+            docker exec -i supabase-db-1 pg_restore --list < "${DUMP_PATH}" > /dev/null
+            sha256sum "${DUMP_PATH}" "${ROLES_PATH}" > "${DUMP_PATH}.sha256"
+            chmod 600 "${DUMP_PATH}" "${ROLES_PATH}" "${DUMP_PATH}.sha256"
+            echo "BACKUP_PATH=${DUMP_PATH}"
+            echo "BACKUP_BYTES=$(stat -c %s "${DUMP_PATH}")"
+            echo "BACKUP_SHA256=$(sha256sum "${DUMP_PATH}" | cut -d " " -f 1)"
+          '
+
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
