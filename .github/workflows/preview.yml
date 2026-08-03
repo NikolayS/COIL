@@ -13,6 +13,80 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Apply and verify intentional-living DB migration
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
+            "docker exec -i supabase-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1" <<'SQL'
+          begin;
+
+          create table if not exists public.cycles (
+            id uuid primary key default public.uuid_generate_v7(),
+            user_id uuid not null,
+            starts_on date not null,
+            ends_on date not null,
+            must_win text not null default '',
+            territories jsonb not null default '{}'::jsonb,
+            status text not null default 'active' check (status in ('active', 'completed')),
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now(),
+            check (ends_on >= starts_on),
+            unique (user_id, starts_on, ends_on)
+          );
+
+          create table if not exists public.period_reviews (
+            id uuid primary key default public.uuid_generate_v7(),
+            user_id uuid not null,
+            review_type text not null check (review_type in ('month', 'quarter')),
+            starts_on date not null,
+            ends_on date not null,
+            responses jsonb not null default '{}'::jsonb,
+            snapshot jsonb not null default '{}'::jsonb,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now(),
+            check (ends_on >= starts_on),
+            unique (user_id, review_type, starts_on)
+          );
+
+          alter table public.cycles enable row level security;
+          alter table public.period_reviews enable row level security;
+
+          do $body$ begin
+            if not exists (
+              select from pg_policies where schemaname = 'public' and tablename = 'cycles' and policyname = 'users manage own cycles'
+            ) then
+              create policy "users manage own cycles" on public.cycles
+                for all using ((select auth.uid()) = user_id)
+                with check ((select auth.uid()) = user_id);
+            end if;
+            if not exists (
+              select from pg_policies where schemaname = 'public' and tablename = 'period_reviews' and policyname = 'users manage own period reviews'
+            ) then
+              create policy "users manage own period reviews" on public.period_reviews
+                for all using ((select auth.uid()) = user_id)
+                with check ((select auth.uid()) = user_id);
+            end if;
+          end $body$;
+
+          grant all on public.cycles to authenticated;
+          grant all on public.period_reviews to authenticated;
+          commit;
+          select pg_notify('pgrst', 'reload schema');
+
+          do $verify$ begin
+            if (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public' and c.relname in ('cycles', 'period_reviews') and c.relrowsecurity) <> 2 then
+              raise exception 'Migration verification failed: tables or RLS missing';
+            end if;
+            if (select count(*) from pg_policies
+                where schemaname = 'public' and policyname in ('users manage own cycles', 'users manage own period reviews')) <> 2 then
+              raise exception 'Migration verification failed: policies missing';
+            end if;
+          end $verify$;
+          select 'MIGRATION_VERIFIED=cycles,period_reviews';
+          SQL
+
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
