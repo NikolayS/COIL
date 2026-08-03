@@ -2074,6 +2074,17 @@ function ReviewTab({
                 </div>
               ))}
             </div>
+            {monthlyEvidence.weeklyTrend.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-[--border] pt-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.12em] text-[--text-faint]">Weekly trend</p>
+                {monthlyEvidence.weeklyTrend.map((week) => (
+                  <div key={week.startsOn} className="flex justify-between text-sm">
+                    <span className="text-[--text-muted]">Week of {new Date(`${week.startsOn}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    <span className="font-mono text-xs">{week.score}/{week.possible} · {week.trackedDays}d</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4 space-y-4">
@@ -2104,17 +2115,6 @@ function ReviewTab({
                         : <span>No recorded dates</span>}
                     </div>
                   </details>
-                ))}
-              </div>
-            )}
-            {monthlyEvidence.weeklyTrend.length > 0 && (
-              <div className="space-y-2 border-t border-[--border] pt-3">
-                <p className="text-[10px] font-mono uppercase tracking-[0.12em] text-[--text-faint]">Weekly trend</p>
-                {monthlyEvidence.weeklyTrend.map((week) => (
-                  <div key={week.startsOn} className="flex justify-between text-sm">
-                    <span className="text-[--text-muted]">Week of {new Date(`${week.startsOn}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    <span className="font-mono text-xs">{week.score}/{week.possible} · {week.trackedDays}d</span>
-                  </div>
                 ))}
               </div>
             )}
