@@ -25,7 +25,7 @@ jobs:
           select 'WEEK_START=' || coalesce(week_start, 'null')
           from public.settings where user_id = (select id from target_user)
           union all
-          select 'WEEK_ROW=' || week_of || ':archived=' || archived || ':fasting_true=' ||
+          select 'WEEK_ROW=' || week_of || ':embedded=' || coalesce(data->>'weekOf', 'null') || ':archived=' || archived || ':fasting_true=' ||
             (select count(*) from jsonb_each(weeks.data->'days') day where day.value->'trackers'->>'fasting' = 'true')
           from public.weeks weeks
           where user_id = (select id from target_user)
