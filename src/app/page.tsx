@@ -6,6 +6,21 @@ import { createClient } from "@/lib/supabase";
 import { generateReport, generatePlainReportHtml } from "@/lib/report";
 import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "@/lib/tracking";
 import {
+  MONTHLY_PLAN_PROMPTS,
+  MONTHLY_REVIEW_PROMPTS,
+  buildMonthlyEvidence,
+  decodeStoredReview,
+  encodeStoredReview,
+  emptyMonthlyPlan,
+  hasRecordedActivity,
+  mergeMonthlyPlanWithCycle,
+  monthRange,
+  monthlyReportText,
+  nextMonthKey,
+  periodDays as collectPeriodDays,
+  type MonthlyWeek,
+} from "@/lib/monthly";
+import {
   TERRITORY_KEYS,
   createDefaultCycle,
   defaultDailyPhase,
@@ -16,6 +31,7 @@ import {
   type CycleData,
   type DailyPhase,
   type DailyIntentions,
+  type MonthlyPlan,
   type ReviewData,
   type ReviewType,
   type TerritoryKey,
@@ -1663,17 +1679,6 @@ function CycleTab({ user }: { user: User | null }) {
   );
 }
 
-const MONTHLY_REVIEW_PROMPTS = [
-  ["proud", "What did I accomplish that I am most proud of?"],
-  ["priority", "What was my biggest priority? Did I achieve it?"],
-  ["changed", "How am I different from last month?"],
-  ["plan", "What did not go according to plan?"],
-  ["stop", "What do I need to stop or do less of?"],
-  ["start", "What do I need to start or do more of?"],
-  ["lessons", "What were my greatest lessons?"],
-  ["trajectory", "If every month looked like this, would I hit my goals?"],
-] as const;
-
 const QUARTERLY_REVIEW_PROMPTS = [
   ["accomplished", "What did I accomplish this quarter?"],
   ["setbacks", "What were my major setbacks or challenges?"],
@@ -1688,30 +1693,41 @@ const QUARTERLY_REVIEW_PROMPTS = [
 function ReviewTab({
   user,
   data,
+  onChange,
   archive,
   trackerSettings,
 }: {
   user: User | null;
   data: WeekData;
+  onChange: (data: WeekData) => void;
   archive: ArchivedWeek[];
   trackerSettings: TrackerSettings;
 }) {
   const now = new Date();
+  const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const defaultReviewMonth = `${previousMonth.getUTCFullYear()}-${String(previousMonth.getUTCMonth() + 1).padStart(2, "0")}`;
   const [type, setType] = useState<ReviewType>("month");
-  const [month, setMonth] = useState(`${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`);
+  const [monthlyPhase, setMonthlyPhase] = useState<"review" | "plan">("review");
+  const [month, setMonth] = useState(defaultReviewMonth);
   const [quarterYear, setQuarterYear] = useState(now.getUTCFullYear());
   const [quarter, setQuarter] = useState(Math.floor(now.getUTCMonth() / 3) + 1);
-  const [review, setReview] = useState<ReviewData>({ responses: {} });
+  const [review, setReview] = useState<ReviewData>(() => ({
+    responses: {},
+    plan: emptyMonthlyPlan(nextMonthKey(defaultReviewMonth)),
+  }));
+  const [reviewCycle, setReviewCycle] = useState<CycleData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState(false);
   const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : currentMonth;
+  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : defaultReviewMonth;
   const safeQuarterYear = Number.isInteger(quarterYear) && quarterYear >= 2020 && quarterYear <= 2100
     ? quarterYear
     : now.getUTCFullYear();
   const periodKey = type === "month" ? safeMonth : `${safeQuarterYear}-Q${quarter}`;
   const period = getReviewPeriod(type, periodKey);
+  const targetMonth = type === "month" ? nextMonthKey(safeMonth) : currentMonth;
 
   useEffect(() => {
     let cancelled = false;
@@ -1720,106 +1736,251 @@ function ReviewTab({
       if (cancelled) return;
       setLoading(true);
       setSaveError(null);
+      setReviewCycle(null);
       if (!user) {
         try {
           const saved = localStorage.getItem(`coil_review_${type}_${periodKey}`);
-          setReview(saved ? JSON.parse(saved) as ReviewData : { responses: {} });
+          const parsed = saved ? JSON.parse(saved) as unknown : {};
+          setReview(type === "month"
+            ? decodeStoredReview(parsed, targetMonth)
+            : { responses: parsed && typeof parsed === "object" && "responses" in parsed
+              ? (parsed as ReviewData).responses
+              : parsed as Record<string, string> });
+          if (type === "month") {
+            const cycleValue = localStorage.getItem("coil_active_cycle");
+            if (cycleValue) {
+              const cycle = normalizeCycle(JSON.parse(cycleValue) as Partial<CycleData>);
+              if (cycle.startsOn <= period.endsOn && cycle.endsOn >= period.startsOn) setReviewCycle(cycle);
+              const targetRange = monthRange(targetMonth);
+              if (cycle.startsOn === targetRange.startsOn && cycle.endsOn === targetRange.endsOn) {
+                setReview((current) => ({
+                  ...current,
+                  plan: mergeMonthlyPlanWithCycle(current.plan ?? emptyMonthlyPlan(targetMonth), cycle),
+                }));
+              }
+            }
+          }
         } catch {
-          setReview({ responses: {} });
+          setReview(type === "month"
+            ? { responses: {}, plan: emptyMonthlyPlan(targetMonth) }
+            : { responses: {} });
         }
         setLoading(false);
         return;
       }
 
-      const { data: saved, error } = await createClient()
-        .from("period_reviews")
-        .select("responses")
-        .eq("user_id", user.id)
-        .eq("review_type", type)
-        .eq("starts_on", period.startsOn)
-        .maybeSingle();
+      const supabase = createClient();
+      const targetRange = monthRange(targetMonth);
+      const [savedResult, cycleResult, planCycleResult] = await Promise.all([
+        supabase
+          .from("period_reviews")
+          .select("responses")
+          .eq("user_id", user.id)
+          .eq("review_type", type)
+          .eq("starts_on", period.startsOn)
+          .maybeSingle(),
+        type === "month"
+          ? supabase
+              .from("cycles")
+              .select("starts_on, ends_on, must_win, territories")
+              .eq("user_id", user.id)
+              .lte("starts_on", period.endsOn)
+              .gte("ends_on", period.startsOn)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        type === "month"
+          ? supabase
+              .from("cycles")
+              .select("starts_on, ends_on, must_win, territories")
+              .eq("user_id", user.id)
+              .eq("starts_on", targetRange.startsOn)
+              .eq("ends_on", targetRange.endsOn)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
       if (cancelled) return;
-      if (error) setSaveError("Review storage will be available after the database migration.");
-      setReview({ responses: saved?.responses && typeof saved.responses === "object" ? saved.responses : {} });
+      if (savedResult.error) setSaveError("Review storage will be available after the database migration.");
+      const targetCycle = planCycleResult.data ? normalizeCycle({
+        startsOn: planCycleResult.data.starts_on,
+        endsOn: planCycleResult.data.ends_on,
+        mustWin: planCycleResult.data.must_win,
+        territories: planCycleResult.data.territories,
+      }) : null;
+      setReview(type === "month"
+        ? (() => {
+            const saved = decodeStoredReview(savedResult.data?.responses, targetMonth);
+            return { ...saved, plan: mergeMonthlyPlanWithCycle(saved.plan ?? emptyMonthlyPlan(targetMonth), targetCycle) };
+          })()
+        : { responses: savedResult.data?.responses && typeof savedResult.data.responses === "object"
+          ? savedResult.data.responses as Record<string, string>
+          : {} });
+      if (cycleResult.data) {
+        setReviewCycle(normalizeCycle({
+          startsOn: cycleResult.data.starts_on,
+          endsOn: cycleResult.data.ends_on,
+          mustWin: cycleResult.data.must_win,
+          territories: cycleResult.data.territories,
+        }));
+      }
       setLoading(false);
     };
     void loadReview();
     return () => {
       cancelled = true;
     };
-  }, [periodKey, type, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [periodKey, type, user, targetMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const allWeeks = [
-    { weekOf: data.weekOf, data, archivedAt: new Date().toISOString() },
+  const allWeeks: MonthlyWeek[] = [
+    { weekOf: data.weekOf, days: data.days },
     ...archive,
-  ].filter((week, index, weeks) =>
+  ].map((week) => "days" in week ? week : ({ weekOf: week.weekOf, days: week.data.days }))
+    .filter((week, index, weeks) =>
     weeks.findIndex((candidate) => candidate.weekOf === week.weekOf) === index
   );
-  const dayNumbers: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
   const today = isoDate(new Date());
-  const periodDays = allWeeks.flatMap((week) => {
-    const weekStartDate = new Date(week.weekOf);
-    const startDayNumber = weekStartDate.getUTCDay();
-    return DAYS.map((day) => {
-      const date = new Date(weekStartDate);
-      date.setUTCDate(date.getUTCDate() + ((dayNumbers[day] - startDayNumber + 7) % 7));
-      return { date: date.toISOString().slice(0, 10), data: week.data.days[day] };
-    });
-  }).filter((day, index, days) =>
-    day.date >= period.startsOn &&
-    day.date <= period.endsOn &&
-    day.date <= today &&
-    days.findIndex((candidate) => candidate.date === day.date) === index
-  );
-  const totalScore = periodDays.reduce(
-    (sum, day) => sum + Object.values(day.data?.territories ?? {}).filter(Boolean).length,
+  const monthlyEvidence = buildMonthlyEvidence(allWeeks, safeMonth, trackerSettings, today);
+  const previousEvidence = buildMonthlyEvidence(allWeeks, (() => {
+    const date = new Date(`${safeMonth}-01T12:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() - 1);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  })(), trackerSettings, today);
+  const selectedDays = collectPeriodDays(allWeeks, period.startsOn, period.endsOn, today);
+  const trackedPeriodDays = selectedDays.filter((day) => hasRecordedActivity(day.data));
+  const totalScore = trackedPeriodDays.reduce(
+    (sum, day) => sum + Object.values(day.data.territories ?? {}).filter(Boolean).length,
     0,
   );
-  const possibleScore = periodDays.length * 5;
+  const possibleScore = trackedPeriodDays.length * 5;
   const territoryTotals = Object.fromEntries(
     TERRITORY_KEYS.map((key) => [
       key,
-      periodDays.filter((day) => day.data?.territories[key]).length,
+      trackedPeriodDays.filter((day) => day.data.territories?.[key]).length,
     ]),
   ) as Record<TerritoryKey, number>;
   const prompts = type === "month" ? MONTHLY_REVIEW_PROMPTS : QUARTERLY_REVIEW_PROMPTS;
 
-  const saveReview = async () => {
+  const saveReview = async (applyPlan = false) => {
     setSaveStatus("saving");
     setSaveError(null);
-    const snapshot = {
-      days: periodDays.length,
-      score: totalScore,
-      possible: possibleScore,
-      territories: territoryTotals,
-    };
-    if (!user) {
-      localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(review));
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 1500);
-      return;
+    let reviewToSave = review;
+    let cycleToApply: CycleData | null = null;
+    if (applyPlan && type === "month" && review.plan) {
+      const planRange = monthRange(review.plan.targetMonth);
+      let existingCycle: CycleData | null = null;
+      if (!user) {
+        try {
+          const value = localStorage.getItem("coil_active_cycle");
+          if (value) {
+            const candidate = normalizeCycle(JSON.parse(value) as Partial<CycleData>);
+            if (candidate.startsOn === planRange.startsOn && candidate.endsOn === planRange.endsOn) existingCycle = candidate;
+          }
+        } catch {}
+      } else {
+        const { data: existing } = await createClient().from("cycles")
+          .select("starts_on, ends_on, must_win, territories")
+          .eq("user_id", user.id)
+          .eq("starts_on", planRange.startsOn)
+          .eq("ends_on", planRange.endsOn)
+          .maybeSingle();
+        if (existing) existingCycle = normalizeCycle({
+          startsOn: existing.starts_on,
+          endsOn: existing.ends_on,
+          mustWin: existing.must_win,
+          territories: existing.territories,
+        });
+      }
+      const mergedPlan = mergeMonthlyPlanWithCycle(review.plan, existingCycle);
+      reviewToSave = { ...review, plan: mergedPlan };
+      cycleToApply = {
+        startsOn: planRange.startsOn,
+        endsOn: planRange.endsOn,
+        mustWin: mergedPlan.responses.mustWin ?? "",
+        territories: mergedPlan.territories,
+      };
+      setReview(reviewToSave);
     }
-
-    const { error } = await createClient()
-      .from("period_reviews")
-      .upsert({
+    const snapshot = type === "month" ? monthlyEvidence : {
+      days: trackedPeriodDays.length, score: totalScore, possible: possibleScore, territories: territoryTotals,
+    };
+    const storedResponses = type === "month" ? encodeStoredReview(reviewToSave) : review.responses;
+    if (!user) {
+      localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(storedResponses));
+    } else {
+      const { error } = await createClient().from("period_reviews").upsert({
         user_id: user.id,
         review_type: type,
         starts_on: period.startsOn,
         ends_on: period.endsOn,
-        responses: review.responses,
+        responses: storedResponses,
         snapshot,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id,review_type,starts_on" });
+      if (error) {
+        setSaveStatus("error");
+        setSaveError(error.message);
+        return;
+      }
+    }
 
-    if (error) {
-      setSaveStatus("error");
-      setSaveError(error.message);
-      return;
+    if (cycleToApply) {
+      const cycle = cycleToApply;
+      const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
+      if (!user) {
+        localStorage.setItem("coil_active_cycle", JSON.stringify(cycle));
+      } else {
+        const { error } = await createClient().from("cycles").upsert({
+          user_id: user.id,
+          starts_on: cycle.startsOn,
+          ends_on: cycle.endsOn,
+          must_win: cycle.mustWin,
+          territories: cycle.territories,
+          status: "active",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,starts_on,ends_on" });
+        if (error) {
+          setSaveStatus("error");
+          setSaveError(error.message);
+          return;
+        }
+      }
+      const weekStartDate = new Date(data.weekOf);
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+      if (isoDate(weekStartDate) <= planRange.endsOn && isoDate(weekEndDate) >= planRange.startsOn) {
+        onChange({
+          ...data,
+          weekly: {
+            ...data.weekly,
+            priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+              key,
+              cycle.territories[key].outcome.trim() || data.weekly.priorities[key],
+            ])) as Record<TerritoryKey, string>,
+          },
+        });
+      }
     }
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 1500);
   };
+
+  const updatePlan = (updater: (plan: MonthlyPlan) => MonthlyPlan) => {
+    setReview((current) => ({
+      ...current,
+      plan: updater(current.plan ?? emptyMonthlyPlan(targetMonth)),
+    }));
+  };
+
+  const copyMonthlyReport = async () => {
+    await navigator.clipboard.writeText(monthlyReportText(period.label, monthlyEvidence, review, reviewCycle));
+    setCopyStatus(true);
+    setTimeout(() => setCopyStatus(false), 1500);
+  };
+
+  const currentRate = monthlyEvidence.possible ? monthlyEvidence.score / monthlyEvidence.possible : null;
+  const previousRate = previousEvidence.possible ? previousEvidence.score / previousEvidence.possible : null;
+  const rateDelta = currentRate !== null && previousRate !== null ? Math.round((currentRate - previousRate) * 100) : null;
 
   return (
     <div className="space-y-6">
@@ -1833,14 +1994,23 @@ function ReviewTab({
       />
 
       {type === "month" ? (
-        <input
-          type="month"
-          value={month}
-          onChange={(event) => {
-            if (event.target.value) setMonth(event.target.value);
-          }}
-          className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
-        />
+        <div className="space-y-3">
+          <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+            Review month
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => { if (event.target.value) setMonth(event.target.value); }}
+              className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
+            />
+          </label>
+          <PhaseSwitch
+            value={monthlyPhase}
+            options={[{ value: "review", label: "Review" }, { value: "plan", label: "Plan next month" }]}
+            onChange={setMonthlyPhase}
+            prominent
+          />
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
           <select
@@ -1864,28 +2034,146 @@ function ReviewTab({
         </div>
       )}
 
-      <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
-        <div className="flex items-end justify-between">
-          <div>
-            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">{period.label}</p>
-            <p className="mt-1 text-xs text-[--text-faint]">{periodDays.length} days of evidence</p>
-          </div>
-          <p className="font-mono text-xl text-[--gold]">{totalScore}/{possibleScore || 0}</p>
-        </div>
-        <div className="mt-4 space-y-2 border-t border-[--border] pt-4">
-          {TERRITORIES.map((territory) => (
-            <div key={territory.key} className="flex items-center justify-between text-sm">
-              <span style={{ color: territory.color }}>{territory.label}</span>
-              <span className="font-mono text-xs text-[--text-muted]">
-                {territoryTotals[territory.key]}/{periodDays.length}
-              </span>
+      {type === "month" ? (
+        <>
+          <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">{period.label} evidence</p>
+                <p className="mt-1 text-xs text-[--text-faint]">
+                  {monthlyEvidence.trackedDays}/{monthlyEvidence.elapsedDays} days with recorded activity
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-xl text-[--gold]">{monthlyEvidence.score}/{monthlyEvidence.possible}</p>
+                {rateDelta !== null && <p className="text-xs text-[--text-faint]">{rateDelta >= 0 ? "+" : ""}{rateDelta} pts vs prior month</p>}
+              </div>
             </div>
-          ))}
+            {monthlyEvidence.trackedDays === 0 && (
+              <p className="mt-4 rounded-xl border border-[--border] bg-[--bg] p-3 text-sm text-[--text-muted]">
+                No tracked days found. You can still complete the review from memory; the app will not pretend missing days were failures.
+              </p>
+            )}
+            <div className="mt-4 space-y-3 border-t border-[--border] pt-4">
+              {TERRITORIES.map((territory) => (
+                <div key={territory.key}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span style={{ color: territory.color }}>{territory.label}</span>
+                    <span className="font-mono text-xs text-[--text-muted]">
+                      {monthlyEvidence.territoryTotals[territory.key]}/{monthlyEvidence.trackedDays}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-[--text-faint]">
+                    Commitments: {monthlyEvidence.commitmentsCompleted[territory.key]}/{monthlyEvidence.commitmentsPlanned[territory.key]} completed
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4 space-y-4">
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Patterns</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[{ label: "ARS", value: monthlyEvidence.basics.ars }, { label: "AD", value: monthlyEvidence.basics.ad }, { label: "CFO", value: monthlyEvidence.basics.cfo }].map((item) => (
+                <div key={item.label} className="rounded-xl bg-[--bg] p-3">
+                  <p className="font-mono text-lg text-[--gold]">{item.value}</p>
+                  <p className="text-[10px] uppercase text-[--text-faint]">{item.label}</p>
+                </div>
+              ))}
+            </div>
+            {monthlyEvidence.trackers.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {monthlyEvidence.trackers.map((tracker) => (
+                  <div key={tracker.id} className="flex items-center justify-between rounded-xl bg-[--bg] px-3 py-2 text-sm">
+                    <span>{tracker.emoji} {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {monthlyEvidence.weeklyTrend.length > 0 && (
+              <div className="space-y-2 border-t border-[--border] pt-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.12em] text-[--text-faint]">Weekly trend</p>
+                {monthlyEvidence.weeklyTrend.map((week) => (
+                  <div key={week.startsOn} className="flex justify-between text-sm">
+                    <span className="text-[--text-muted]">Week of {new Date(`${week.startsOn}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    <span className="font-mono text-xs">{week.score}/{week.possible} · {week.trackedDays}d</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border p-4" style={{ borderColor: reviewCycle ? "var(--gold-border)" : "var(--border)", backgroundColor: "var(--bg-card)" }}>
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Goals context</p>
+            {reviewCycle ? (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-[--text]">{reviewCycle.mustWin || "No must-win recorded"}</p>
+                {TERRITORIES.filter((territory) => reviewCycle.territories[territory.key].outcome).map((territory) => (
+                  <p key={territory.key} className="text-xs text-[--text-muted]"><span style={{ color: territory.color }}>{territory.label}:</span> {reviewCycle.territories[territory.key].outcome}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-[--text-muted]">
+                No goals were set for {period.label}. That is not a blocker—review what actually happened, then use Plan to create the next month.
+              </p>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+          <div className="flex items-end justify-between">
+            <div><p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">{period.label}</p><p className="mt-1 text-xs text-[--text-faint]">{trackedPeriodDays.length} tracked days</p></div>
+            <p className="font-mono text-xl text-[--gold]">{totalScore}/{possibleScore}</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {loading ? (
         <p className="py-8 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading review…</p>
+      ) : type === "month" && monthlyPhase === "plan" ? (
+        <div className="space-y-5">
+          <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+            Plan month
+            <input
+              type="month"
+              value={review.plan?.targetMonth ?? targetMonth}
+              onChange={(event) => { if (event.target.value) updatePlan((plan) => ({ ...plan, targetMonth: event.target.value })); }}
+              className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text]"
+            />
+          </label>
+          <p className="text-sm text-[--text-muted]">
+            {period.label} Review → {monthRange(review.plan?.targetMonth ?? targetMonth).label} Plan
+          </p>
+          {MONTHLY_PLAN_PROMPTS.map(([key, label]) => (
+            <JournalField
+              key={key}
+              label={label}
+              placeholder="Make it concrete..."
+              value={review.plan?.responses[key] ?? ""}
+              onChange={(value) => updatePlan((plan) => ({ ...plan, responses: { ...plan.responses, [key]: value } }))}
+            />
+          ))}
+          <div className="space-y-3">
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Territory outcomes → Week → Day</p>
+            {TERRITORIES.map((territory) => (
+              <div key={territory.key} className="rounded-2xl border border-[--border] bg-[--bg-card] p-4 space-y-2">
+                <p className="text-xs font-mono uppercase tracking-[0.12em]" style={{ color: territory.color }}>{territory.label}</p>
+                <input
+                  value={review.plan?.territories[territory.key].outcome ?? ""}
+                  onChange={(event) => updatePlan((plan) => ({ ...plan, territories: { ...plan.territories, [territory.key]: { ...plan.territories[territory.key], outcome: event.target.value } } }))}
+                  placeholder="Outcome / priority"
+                  className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text]"
+                />
+                <input
+                  value={review.plan?.territories[territory.key].keystoneHabit ?? ""}
+                  onChange={(event) => updatePlan((plan) => ({ ...plan, territories: { ...plan.territories, [territory.key]: { ...plan.territories[territory.key], keystoneHabit: event.target.value } } }))}
+                  placeholder="Keystone habit"
+                  className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
         prompts.map(([key, label]) => (
           <JournalField
@@ -1893,9 +2181,10 @@ function ReviewTab({
             label={label}
             placeholder="Reflect from the evidence above..."
             value={review.responses[key] ?? ""}
-            onChange={(value) => setReview({
-              responses: { ...review.responses, [key]: value },
-            })}
+            onChange={(value) => setReview((current) => ({
+              ...current,
+              responses: { ...current.responses, [key]: value },
+            }))}
           />
         ))
       )}
@@ -1903,22 +2192,33 @@ function ReviewTab({
       {saveError && <p className="text-sm text-red-400">{saveError}</p>}
       <button
         type="button"
-        onClick={saveReview}
+        onClick={() => void saveReview(type === "month" && monthlyPhase === "plan")}
         disabled={saveStatus === "saving"}
         className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
         style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
       >
-        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : `Save ${type} review`}
+        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : type === "month" && monthlyPhase === "plan" ? "Save & apply monthly plan" : `Save ${type} review`}
       </button>
 
-      <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
-        <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
-          Share & exports
-        </summary>
-        <div className="mt-5">
-          <ExportTab data={data} user={user} trackerSettings={trackerSettings} />
+      {type === "month" ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => void copyMonthlyReport()} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted]">
+            {copyStatus ? "Copied" : "Copy report"}
+          </button>
+          {user ? (
+            <button type="button" onClick={() => { window.location.href = `/api/pdf/monthly-review?month=${safeMonth}`; }} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted]">
+              Monthly PDF
+            </button>
+          ) : (
+            <button type="button" disabled className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-faint] opacity-50">PDF requires account</button>
+          )}
         </div>
-      </details>
+      ) : (
+        <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
+          <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">Share & exports</summary>
+          <div className="mt-5"><ExportTab data={data} user={user} trackerSettings={trackerSettings} /></div>
+        </details>
+      )}
 
       <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
         <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
@@ -2310,7 +2610,7 @@ export default function CoilApp() {
             <CycleTab user={user} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} archive={archive} trackerSettings={trackerSettings} />
+            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} />
           )}
         </div>
       </div>

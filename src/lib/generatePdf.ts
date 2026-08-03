@@ -7,6 +7,8 @@ import fs from "fs";
 import path from "path";
 import type { WeekData } from "./report";
 import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, type TrackerSettings } from "./tracking";
+import { MONTHLY_PLAN_PROMPTS, MONTHLY_REVIEW_PROMPTS, monthRange, type MonthlyEvidence } from "./monthly";
+import { TERRITORY_KEYS, type CycleData, type ReviewData } from "./intentional";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -421,5 +423,125 @@ export async function generateConsolidatedReportPdf(
     x: margin, y: 24, font: regular, size: 8, color: COLORS.mid,
   });
 
+  return doc.save();
+}
+
+export async function generateMonthlyReviewPdf(input: {
+  label: string;
+  evidence: MonthlyEvidence;
+  review: ReviewData;
+  goals: CycleData | null;
+}): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(fs.readFileSync(fontPath("LiberationSans-Regular.ttf")));
+  const bold = await doc.embedFont(fs.readFileSync(fontPath("LiberationSans-Bold.ttf")));
+  const PAGE_W = 595;
+  const PAGE_H = 842;
+  const MARGIN = 48;
+  const WIDTH = PAGE_W - MARGIN * 2;
+  let page = doc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN;
+
+  const addPage = () => {
+    page = doc.addPage([PAGE_W, PAGE_H]);
+    y = PAGE_H - MARGIN;
+  };
+  const ensure = (height: number) => { if (y - height < 42) addPage(); };
+  const wrap = (value: string, maxWidth = WIDTH, size = 10): string[] => {
+    const paragraphs = value.replace(/\r/g, "").split("\n");
+    const lines: string[] = [];
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(/\s+/).filter(Boolean);
+      if (!words.length) { lines.push(""); continue; }
+      let line = "";
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (regular.widthOfTextAtSize(candidate, size) > maxWidth && line) {
+          lines.push(line);
+          line = word;
+        } else line = candidate;
+      }
+      if (line) lines.push(line);
+    }
+    return lines;
+  };
+  const text = (value: string, opts: { size?: number; isBold?: boolean; color?: RGB; gap?: number } = {}) => {
+    const size = opts.size ?? 10;
+    const lines = wrap(value, WIDTH, size);
+    ensure(Math.max(1, lines.length) * (size + 3));
+    for (const line of lines) {
+      if (line) page.drawText(line, { x: MARGIN, y, font: opts.isBold ? bold : regular, size, color: opts.color ?? COLORS.dark });
+      y -= size + 3;
+    }
+    y -= opts.gap ?? 3;
+  };
+  const section = (title: string) => {
+    ensure(34);
+    y -= 7;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.7, color: COLORS.light });
+    y -= 19;
+    text(title, { size: 14, isBold: true, color: COLORS.primary, gap: 8 });
+  };
+  const answer = (prompt: string, value: string) => {
+    text(prompt, { size: 10, isBold: true, gap: 2 });
+    text(value.trim() || "—", { size: 10, color: value.trim() ? COLORS.dark : COLORS.mid, gap: 10 });
+  };
+
+  text("COIL", { size: 28, isBold: true, color: COLORS.primary, gap: 8 });
+  text(`Monthly Review — ${input.label}`, { size: 18, isBold: true, gap: 4 });
+  text(`${input.evidence.trackedDays}/${input.evidence.elapsedDays} days with recorded activity`, { size: 10, color: COLORS.mid, gap: 14 });
+  page.drawRectangle({ x: MARGIN, y: y - 4, width: 190, height: 30, color: COLORS.rowAlt });
+  page.drawText(`Execution: ${input.evidence.score}/${input.evidence.possible}`, { x: MARGIN + 9, y: y + 6, font: bold, size: 12, color: COLORS.primary });
+  y -= 42;
+
+  section("Evidence by territory");
+  for (const key of TERRITORY_KEYS) {
+    const label = key.charAt(0).toUpperCase() + key.slice(1);
+    text(`${label}: ${input.evidence.territoryTotals[key]}/${input.evidence.trackedDays} days | Commitments ${input.evidence.commitmentsCompleted[key]}/${input.evidence.commitmentsPlanned[key]}`, { size: 10, gap: 2 });
+  }
+  text(`Basics: ARS ${input.evidence.basics.ars} | Alpha Decompression ${input.evidence.basics.ad} | CFO ${input.evidence.basics.cfo}`, { size: 10, gap: 4 });
+  for (const tracker of input.evidence.trackers) text(`${tracker.label}: ${tracker.summary}`, { size: 10, gap: 1 });
+
+  section("Weekly trend");
+  if (!input.evidence.weeklyTrend.length) text("No tracked weeks.", { color: COLORS.mid });
+  for (const week of input.evidence.weeklyTrend) text(`Week of ${week.startsOn}: ${week.score}/${week.possible} across ${week.trackedDays} tracked days`, { size: 10, gap: 2 });
+
+  section("Goals context");
+  if (!input.goals) {
+    text("No goals were set for this month. This review is based on actual evidence and reflection.", { color: COLORS.mid });
+  } else {
+    answer("Must-win", input.goals.mustWin);
+    for (const key of TERRITORY_KEYS) {
+      const territory = input.goals.territories[key];
+      if (territory.outcome || territory.keystoneHabit) answer(`${key} — outcome / keystone habit`, `${territory.outcome || "—"} / ${territory.keystoneHabit || "—"}`);
+    }
+  }
+
+  section("Monthly Review");
+  for (const [key, prompt] of MONTHLY_REVIEW_PROMPTS) answer(prompt, input.review.responses[key] ?? "");
+
+  section("Recorded wins and reflections");
+  if (!input.evidence.wins.length && !input.evidence.reflections.length) text("No journal evidence recorded.", { color: COLORS.mid });
+  for (const item of input.evidence.wins) answer(`Win — ${item.date}`, item.text);
+  for (const item of input.evidence.reflections) answer(`Reflection — ${item.date}`, item.text);
+
+  if (input.review.plan) {
+    section(`Monthly Plan — ${monthRange(input.review.plan.targetMonth).label}`);
+    for (const [key, prompt] of MONTHLY_PLAN_PROMPTS) answer(prompt, input.review.plan.responses[key] ?? "");
+    section("Territory plan");
+    for (const key of TERRITORY_KEYS) {
+      const territory = input.review.plan.territories[key];
+      answer(`${key} — outcome / keystone habit`, `${territory.outcome || "—"} / ${territory.keystoneHabit || "—"}`);
+    }
+  }
+
+  const pages = doc.getPages();
+  const generated = new Date().toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  pages.forEach((pdfPage, index) => {
+    pdfPage.drawText(`COIL — ${input.label}  ·  Page ${index + 1} of ${pages.length}`, { x: MARGIN, y: 20, font: regular, size: 8, color: COLORS.mid });
+    const right = generated;
+    pdfPage.drawText(right, { x: PAGE_W - MARGIN - regular.widthOfTextAtSize(right, 7), y: 20, font: regular, size: 7, color: COLORS.mid });
+  });
   return doc.save();
 }

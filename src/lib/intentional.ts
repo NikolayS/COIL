@@ -54,6 +54,13 @@ export interface ReviewPeriod {
 
 export interface ReviewData {
   responses: Record<string, string>;
+  plan?: MonthlyPlan;
+}
+
+export interface MonthlyPlan {
+  targetMonth: string;
+  responses: Record<string, string>;
+  territories: Record<TerritoryKey, TerritoryCommitment>;
 }
 
 export function defaultDailyPhase(daysAgo: number): DailyPhase {

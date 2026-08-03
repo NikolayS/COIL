@@ -61,8 +61,9 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("checking a territory shows the save status pill ('saving' or 'saved')", async ({ page }) => {
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     // Click the first territory toggle
-    const firstTerritory = page.locator("button.territory-toggle").first();
+    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
     await expect(firstTerritory).toBeVisible();
     await firstTerritory.click();
 
@@ -74,7 +75,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("save status pill shows 'saved' after checking territory (demo = localStorage)", async ({ page }) => {
-    const firstTerritory = page.locator("button.territory-toggle").first();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
     await firstTerritory.click();
 
     // Demo mode writes to localStorage synchronously → jumps straight to 'saved'
@@ -82,7 +84,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("save status pill disappears after a moment", async ({ page }) => {
-    const firstTerritory = page.locator("button.territory-toggle").first();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
     await firstTerritory.click();
 
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
@@ -92,11 +95,12 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("score increments when territory is checked", async ({ page }) => {
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     // Initial score should be 0 for a fresh demo session
     const scoreEl = page.locator("text=/^\\d+$/").first();
     const initialScore = parseInt(await scoreEl.textContent() ?? "0", 10);
 
-    const firstTerritory = page.locator("button.territory-toggle").first();
+    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
     await firstTerritory.click();
 
     // Wait for save to settle
@@ -108,7 +112,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("score persists after page reload (localStorage)", async ({ page }) => {
-    const firstTerritory = page.locator("button.territory-toggle").first();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
     await firstTerritory.click();
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
 
@@ -136,23 +141,25 @@ test.describe("Demo mode — home page", () => {
     await expect(page).toHaveURL(/\/settings/);
   });
 
-  test("tab navigation works — can switch to Weekly tab", async ({ page }) => {
-    await page.getByRole("button", { name: /weekly/i }).click();
+  test("tab navigation works — can switch to Week review", async ({ page }) => {
+    await page.getByRole("button", { name: "Week", exact: true }).click();
+    await page.getByRole("button", { name: "Review", exact: true }).last().click();
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
   });
 
-  test("tab navigation works — Export tab shows Copy Report button", async ({ page }) => {
-    await page.getByRole("button", { name: /export/i }).click();
-    await expect(page.getByRole("button", { name: /copy for ai chat/i })).toBeVisible();
+  test("tab navigation works — Review shows monthly report actions", async ({ page }) => {
+    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await expect(page.getByRole("button", { name: /copy report/i })).toBeVisible();
   });
 
-  test("Export tab: SQL Dump button is NOT visible in demo mode (no user)", async ({ page }) => {
-    await page.getByRole("button", { name: /export/i }).click();
+  test("Review: SQL Dump button is NOT visible in demo mode (no user)", async ({ page }) => {
+    await page.getByRole("button", { name: "Review", exact: true }).click();
     // Download SQL Dump button only shows for authenticated users
     await expect(page.getByRole("button", { name: /download sql dump/i })).not.toBeVisible();
   });
 
   test("Wolf check buttons are visible and toggleable", async ({ page }) => {
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByText("Wise")).toBeVisible();
     await expect(page.getByText("Open")).toBeVisible();
     await expect(page.getByText("Loving")).toBeVisible();
@@ -164,8 +171,43 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("Drink counter increments and saves", async ({ page }) => {
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     await page.getByRole("button", { name: "Increase 🥃 Drinks Today" }).click();
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
+  });
+
+  test("July review works without pre-existing goals", async ({ page }) => {
+    await page.getByRole("button", { name: "Review" }).click();
+    await expect(page.getByLabel("Review month")).toHaveValue("2026-07");
+
+    await expect(page.getByText("No goals were set for July 2026", { exact: false })).toBeVisible();
+    await expect(page.getByText("You can still complete the review from memory", { exact: false })).toBeVisible();
+    await expect(page.getByText("What did I accomplish this past month that I am most proud of?", { exact: true })).toBeVisible();
+  });
+
+  test("July review creates and applies an August plan", async ({ page }) => {
+    await page.getByRole("button", { name: "Review" }).click();
+    await expect(page.getByLabel("Review month")).toHaveValue("2026-07");
+    await page.getByRole("button", { name: "Plan next month" }).click();
+
+    await expect(page.getByLabel("Plan month")).toHaveValue("2026-08");
+    await page.getByText("What is the one thing I must accomplish this month?", { exact: true })
+      .locator("..")
+      .getByRole("textbox")
+      .fill("Launch August release");
+    await page.locator('input[placeholder="Outcome / priority"]').last().fill("Ship the release");
+    await page.getByRole("button", { name: "Save & apply monthly plan" }).click();
+    await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+
+    const stored = await page.evaluate(() => ({
+      review: JSON.parse(localStorage.getItem("coil_review_month_2026-07") ?? "null"),
+      cycle: JSON.parse(localStorage.getItem("coil_active_cycle") ?? "null"),
+    }));
+    expect(stored.review.__plan.targetMonth).toBe("2026-08");
+    expect(stored.review.__plan.responses.mustWin).toBe("Launch August release");
+    expect(stored.cycle.startsOn).toBe("2026-08-01");
+    expect(stored.cycle.endsOn).toBe("2026-08-31");
+    expect(stored.cycle.territories.business.outcome).toBe("Ship the release");
   });
 });
 
