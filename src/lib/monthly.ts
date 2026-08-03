@@ -129,7 +129,7 @@ export function normalizeMonthlyPlan(value: unknown, targetMonth: string): Month
     ? saved.territories as Partial<MonthlyPlan["territories"]>
     : {};
   return {
-    targetMonth: typeof saved.targetMonth === "string" && /^\d{4}-\d{2}$/.test(saved.targetMonth)
+    targetMonth: typeof saved.targetMonth === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(saved.targetMonth)
       ? saved.targetMonth
       : targetMonth,
     responses: Object.fromEntries(
@@ -270,10 +270,11 @@ export function periodDays(
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function weekStart(dateValue: string): string {
+function trendWeekStart(dateValue: string, preferredStart: "monday" | "sunday"): string {
   const date = new Date(`${dateValue}T12:00:00Z`);
   const day = date.getUTCDay();
-  date.setUTCDate(date.getUTCDate() - day + (day === 0 ? -6 : 1));
+  const offset = preferredStart === "sunday" ? day : (day + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - offset);
   return isoDate(date);
 }
 
@@ -282,6 +283,7 @@ export function buildMonthlyEvidence(
   month: string,
   trackerSettings: TrackerSettings,
   through = isoDate(new Date()),
+  preferredWeekStart: "monday" | "sunday" = "monday",
 ): MonthlyEvidence {
   const range = monthRange(month);
   const allDays = periodDays(weeks, range.startsOn, range.endsOn, through);
@@ -304,7 +306,7 @@ export function buildMonthlyEvidence(
   ])) as Record<TerritoryKey, number>;
   const groups = new Map<string, MonthlyEvidenceDay[]>();
   for (const day of tracked) {
-    const key = weekStart(day.date);
+    const key = trendWeekStart(day.date, preferredWeekStart);
     groups.set(key, [...(groups.get(key) ?? []), day]);
   }
 

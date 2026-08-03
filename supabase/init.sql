@@ -122,7 +122,7 @@ create policy "users manage own cycles" on public.cycles
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
-grant all on public.cycles to authenticated;
+grant select, insert, update, delete on public.cycles to authenticated;
 
 -- Monthly and quarterly reviews
 create table if not exists public.period_reviews (
@@ -151,4 +151,4 @@ create policy "users manage own period reviews" on public.period_reviews
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
-grant all on public.period_reviews to authenticated;
+grant select, insert, update, delete on public.period_reviews to authenticated;

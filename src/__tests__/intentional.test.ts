@@ -6,6 +6,7 @@ import {
   isDailyPhaseLocked,
   migrateDayIntentions,
   migrateWeeklyIntentions,
+  seedWeeklyPrioritiesFromCycle,
 } from "@/lib/intentional";
 
 describe("daily Plan/Close phase", () => {
@@ -49,6 +50,28 @@ describe("createDefaultCycle", () => {
       "business",
     ]);
     expect(cycle.territories.health).toEqual({ outcome: "", keystoneHabit: "" });
+  });
+});
+
+describe("cycle carry-forward", () => {
+  it("seeds blank weekly priorities and preserves user-entered ones", () => {
+    const cycle = createDefaultCycle(new Date("2026-08-01T12:00:00Z"));
+    cycle.territories.self.outcome = "Read every day";
+    cycle.territories.business.outcome = "Ship release";
+
+    expect(seedWeeklyPrioritiesFromCycle({
+      self: "Already chose a book",
+      health: "",
+      wealth: "",
+      relationships: "",
+      business: "",
+    }, cycle)).toEqual({
+      self: "Already chose a book",
+      health: "",
+      wealth: "",
+      relationships: "",
+      business: "Ship release",
+    });
   });
 });
 

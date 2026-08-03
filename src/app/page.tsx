@@ -20,6 +20,7 @@ import {
   periodDays as collectPeriodDays,
   type MonthlyWeek,
 } from "@/lib/monthly";
+import { evidenceQueryRange, monthlyWeeksFromResult } from "@/lib/monthly-data";
 import {
   TERRITORY_KEYS,
   createDefaultCycle,
@@ -28,6 +29,7 @@ import {
   isDailyPhaseLocked,
   migrateDayIntentions,
   migrateWeeklyIntentions,
+  seedWeeklyPrioritiesFromCycle,
   type CycleData,
   type DailyPhase,
   type DailyIntentions,
@@ -342,6 +344,37 @@ async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "s
     data: row.data as WeekData,
     archivedAt: row.updated_at,
   }));
+}
+
+async function fetchCycleForWeek(userId: string, weekOf: string): Promise<CycleData | null> {
+  const end = new Date(`${weekOf}T12:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const { data } = await createClient()
+    .from("cycles")
+    .select("starts_on, ends_on, must_win, territories")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .lte("starts_on", isoDate(end))
+    .gte("ends_on", weekOf)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? normalizeCycle({
+    startsOn: data.starts_on,
+    endsOn: data.ends_on,
+    mustWin: data.must_win,
+    territories: data.territories,
+  }) : null;
+}
+
+function applyCycleToWeek(data: WeekData, cycle: CycleData | null): WeekData {
+  return {
+    ...data,
+    weekly: {
+      ...data.weekly,
+      priorities: seedWeeklyPrioritiesFromCycle(data.weekly.priorities, cycle),
+    },
+  };
 }
 
 async function archiveInSupabase(userId: string, data: WeekData) {
@@ -1701,12 +1734,14 @@ function ReviewTab({
   onChange,
   archive,
   trackerSettings,
+  weekStart,
 }: {
   user: User | null;
   data: WeekData;
   onChange: (data: WeekData) => void;
   archive: ArchivedWeek[];
   trackerSettings: TrackerSettings;
+  weekStart: "monday" | "sunday";
 }) {
   const now = new Date();
   const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
@@ -1722,6 +1757,8 @@ function ReviewTab({
   }));
   const [reviewCycle, setReviewCycle] = useState<CycleData | null>(null);
   const [remoteEvidenceWeeks, setRemoteEvidenceWeeks] = useState<MonthlyWeek[] | null>(null);
+  const [evidenceStatus, setEvidenceStatus] = useState<"loading" | "ready" | "error">(user ? "loading" : "ready");
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1776,8 +1813,7 @@ function ReviewTab({
       }
 
       const supabase = createClient();
-      const targetRange = monthRange(targetMonth);
-      const [savedResult, cycleResult, planCycleResult] = await Promise.all([
+      const [savedResult, cycleResult] = await Promise.all([
         supabase
           .from("period_reviews")
           .select("responses")
@@ -1796,18 +1832,26 @@ function ReviewTab({
               .limit(1)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
-        type === "month"
-          ? supabase
-              .from("cycles")
-              .select("starts_on, ends_on, must_win, territories")
-              .eq("user_id", user.id)
-              .eq("starts_on", targetRange.startsOn)
-              .eq("ends_on", targetRange.endsOn)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
       ]);
       if (cancelled) return;
-      if (savedResult.error) setSaveError("Review storage will be available after the database migration.");
+      if (savedResult.error || cycleResult.error) {
+        setSaveError(savedResult.error?.message ?? cycleResult.error?.message ?? "Could not load review");
+      }
+      const savedReview = type === "month"
+        ? decodeStoredReview(savedResult.data?.responses, targetMonth)
+        : null;
+      const savedPlanRange = savedReview?.plan ? monthRange(savedReview.plan.targetMonth) : null;
+      const planCycleResult = savedPlanRange
+        ? await supabase
+            .from("cycles")
+            .select("starts_on, ends_on, must_win, territories")
+            .eq("user_id", user.id)
+            .eq("starts_on", savedPlanRange.startsOn)
+            .eq("ends_on", savedPlanRange.endsOn)
+            .maybeSingle()
+        : { data: null, error: null };
+      if (cancelled) return;
+      if (planCycleResult.error) setSaveError(planCycleResult.error.message);
       const targetCycle = planCycleResult.data ? normalizeCycle({
         startsOn: planCycleResult.data.starts_on,
         endsOn: planCycleResult.data.ends_on,
@@ -1816,7 +1860,7 @@ function ReviewTab({
       }) : null;
       setReview(type === "month"
         ? (() => {
-            const saved = decodeStoredReview(savedResult.data?.responses, targetMonth);
+            const saved = savedReview ?? decodeStoredReview({}, targetMonth);
             return { ...saved, plan: mergeMonthlyPlanWithCycle(saved.plan ?? emptyMonthlyPlan(targetMonth), targetCycle) };
           })()
         : { responses: savedResult.data?.responses && typeof savedResult.data.responses === "object"
@@ -1842,29 +1886,35 @@ function ReviewTab({
     let cancelled = false;
     if (!user) {
       setRemoteEvidenceWeeks(null);
+      setEvidenceStatus("ready");
+      setEvidenceError(null);
       return;
     }
 
     const loadEvidenceWeeks = async () => {
-      const earliest = new Date(`${period.startsOn}T12:00:00Z`);
-      if (type === "month") earliest.setUTCMonth(earliest.getUTCMonth() - 1);
-      earliest.setUTCDate(earliest.getUTCDate() - 6);
+      const queryRange = evidenceQueryRange(period, type);
 
-      const { data: rows } = await createClient()
+      const result = await createClient()
         .from("weeks")
         .select("week_of, data")
         .eq("user_id", user.id)
-        .gte("week_of", isoDate(earliest))
-        .lte("week_of", period.endsOn)
+        .gte("week_of", queryRange.startsOn)
+        .lte("week_of", queryRange.endsOn)
         .order("week_of", { ascending: true });
       if (cancelled) return;
-      setRemoteEvidenceWeeks((rows ?? []).flatMap((row) => {
-        const week = row.data && typeof row.data === "object" ? row.data as Partial<WeekData> : null;
-        return week?.days ? [{ weekOf: row.week_of, days: week.days }] : [];
-      }));
+      try {
+        setRemoteEvidenceWeeks(monthlyWeeksFromResult(result));
+        setEvidenceStatus("ready");
+      } catch (error) {
+        setRemoteEvidenceWeeks(null);
+        setEvidenceStatus("error");
+        setEvidenceError(error instanceof Error ? error.message : "Could not load monthly evidence");
+      }
     };
 
     setRemoteEvidenceWeeks(null);
+    setEvidenceStatus("loading");
+    setEvidenceError(null);
     void loadEvidenceWeeks();
     return () => {
       cancelled = true;
@@ -1879,13 +1929,14 @@ function ReviewTab({
     weeks.findIndex((candidate) => candidate.weekOf === week.weekOf) === index
   );
   const evidenceWeeks = user ? (remoteEvidenceWeeks ?? []) : allWeeks;
+  const evidenceReady = !user || evidenceStatus === "ready";
   const today = isoDate(new Date());
-  const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today);
+  const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today, weekStart);
   const previousEvidence = buildMonthlyEvidence(evidenceWeeks, (() => {
     const date = new Date(`${safeMonth}-01T12:00:00Z`);
     date.setUTCMonth(date.getUTCMonth() - 1);
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-  })(), trackerSettings, today);
+  })(), trackerSettings, today, weekStart);
   const selectedDays = collectPeriodDays(evidenceWeeks, period.startsOn, period.endsOn, today);
   const trackedPeriodDays = selectedDays.filter((day) => hasRecordedActivity(day.data));
   const totalScore = trackedPeriodDays.reduce(
@@ -1902,6 +1953,10 @@ function ReviewTab({
   const prompts = type === "month" ? MONTHLY_REVIEW_PROMPTS : QUARTERLY_REVIEW_PROMPTS;
 
   const saveReview = async (applyPlan = false) => {
+    if (!evidenceReady) {
+      setSaveError("Wait for evidence to load before saving.");
+      return;
+    }
     setSaveStatus("saving");
     setSaveError(null);
     let reviewToSave = review;
@@ -1918,12 +1973,17 @@ function ReviewTab({
           }
         } catch {}
       } else {
-        const { data: existing } = await createClient().from("cycles")
+        const { data: existing, error: existingError } = await createClient().from("cycles")
           .select("starts_on, ends_on, must_win, territories")
           .eq("user_id", user.id)
           .eq("starts_on", planRange.startsOn)
           .eq("ends_on", planRange.endsOn)
           .maybeSingle();
+        if (existingError) {
+          setSaveStatus("error");
+          setSaveError(existingError.message);
+          return;
+        }
         if (existing) existingCycle = normalizeCycle({
           startsOn: existing.starts_on,
           endsOn: existing.ends_on,
@@ -2033,7 +2093,14 @@ function ReviewTab({
         onChange={setType}
       />
 
-      {type === "month" ? (
+      {!evidenceReady ? (
+        <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+          <p className="text-sm text-[--text-muted]">
+            {evidenceStatus === "loading" ? "Loading complete review evidence…" : "Review evidence is unavailable."}
+          </p>
+          {evidenceError && <p className="mt-2 text-xs text-red-400">{evidenceError}</p>}
+        </div>
+      ) : type === "month" ? (
         <div className="space-y-3">
           <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
             Review month
@@ -2245,7 +2312,7 @@ function ReviewTab({
       <button
         type="button"
         onClick={() => void saveReview(type === "month" && monthlyPhase === "plan")}
-        disabled={saveStatus === "saving"}
+        disabled={saveStatus === "saving" || !evidenceReady}
         className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
         style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
       >
@@ -2254,11 +2321,11 @@ function ReviewTab({
 
       {type === "month" ? (
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => void copyMonthlyReport()} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted]">
+          <button type="button" disabled={!evidenceReady} onClick={() => void copyMonthlyReport()} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted] disabled:opacity-50">
             {copyStatus ? "Copied" : "Copy report"}
           </button>
           {user ? (
-            <button type="button" onClick={() => { window.location.href = `/api/pdf/monthly-review?month=${safeMonth}`; }} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted]">
+            <button type="button" disabled={!evidenceReady} onClick={() => { window.location.href = `/api/pdf/monthly-review?month=${safeMonth}`; }} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted] disabled:opacity-50">
               Monthly PDF
             </button>
           ) : (
@@ -2392,11 +2459,16 @@ export default function CoilApp() {
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
         setTrackerSettings(trackerSettingsFromRow(settingsData));
-        const [remoteWeek, remoteArchive] = await Promise.all([
+        const requestedWeek = isoDate(getMondayForOffset(initOffset, ws));
+        const [remoteWeek, remoteArchive, activeCycle] = await Promise.all([
           fetchCurrentFromSupabase(user.id, initOffset, ws),
           fetchArchiveFromSupabase(user.id, ws),
+          fetchCycleForWeek(user.id, requestedWeek),
         ]);
-        setWeekData(remoteWeek ?? emptyWeekData(getWeekStart(new Date(), ws)));
+        setWeekData(applyCycleToWeek(
+          remoteWeek ?? emptyWeekData(getMondayForOffset(initOffset, ws)),
+          activeCycle,
+        ));
         setArchive(remoteArchive);
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
@@ -2426,8 +2498,15 @@ export default function CoilApp() {
     if (!weekOffsetInitialized.current) { weekOffsetInitialized.current = true; return; }
     if (!user) return;
     setWeekData(null);
-    fetchCurrentFromSupabase(user.id, weekOffset, weekStart).then((w) => {
-      setWeekData(w ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)));
+    const requestedWeek = isoDate(getMondayForOffset(weekOffset, weekStart));
+    Promise.all([
+      fetchCurrentFromSupabase(user.id, weekOffset, weekStart),
+      fetchCycleForWeek(user.id, requestedWeek),
+    ]).then(([week, cycle]) => {
+      setWeekData(applyCycleToWeek(
+        week ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)),
+        cycle,
+      ));
     });
   }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2662,7 +2741,7 @@ export default function CoilApp() {
             <CycleTab user={user} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} />
+            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} />
           )}
         </div>
       </div>

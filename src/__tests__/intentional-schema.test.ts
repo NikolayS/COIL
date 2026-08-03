@@ -23,7 +23,8 @@ describe("intentional living schema", () => {
   it("applies the same schema during tagged deployments", () => {
     expect(deployWorkflow).toContain("create table if not exists public.cycles");
     expect(deployWorkflow).toContain("create table if not exists public.period_reviews");
-    expect(deployWorkflow).toContain("grant all on public.cycles to authenticated");
-    expect(deployWorkflow).toContain("grant all on public.period_reviews to authenticated");
+    expect(deployWorkflow).toContain("grant select, insert, update, delete on public.cycles to authenticated");
+    expect(deployWorkflow).toContain("grant select, insert, update, delete on public.period_reviews to authenticated");
+    expect(deployWorkflow).not.toMatch(/grant all on public\.(cycles|period_reviews) to authenticated/i);
   });
 });

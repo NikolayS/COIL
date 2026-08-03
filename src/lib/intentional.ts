@@ -83,6 +83,17 @@ export function emptyTerritoryCommitments(): Record<TerritoryKey, TerritoryCommi
   ) as Record<TerritoryKey, TerritoryCommitment>;
 }
 
+export function seedWeeklyPrioritiesFromCycle(
+  priorities: Record<TerritoryKey, string>,
+  cycle: CycleData | null,
+): Record<TerritoryKey, string> {
+  if (!cycle) return priorities;
+  return Object.fromEntries(TERRITORY_KEYS.map((key) => [
+    key,
+    priorities[key].trim() || cycle.territories[key].outcome.trim(),
+  ])) as Record<TerritoryKey, string>;
+}
+
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }

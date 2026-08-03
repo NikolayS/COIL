@@ -8,6 +8,7 @@ import {
   nextMonthKey,
   type MonthlyWeek,
 } from "@/lib/monthly";
+import { monthlyWeeksFromRows } from "@/lib/monthly-data";
 import {
   TERRITORY_KEYS,
   emptyTerritoryCommitments,
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
       .maybeSingle(),
     supabase
       .from("settings")
-      .select("tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+      .select("tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled, week_start")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -90,17 +91,15 @@ export async function GET(req: Request) {
   const error = weeksResult.error ?? reviewResult.error ?? cycleResult.error ?? settingsResult.error;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const weeks: MonthlyWeek[] = (weeksResult.data ?? []).map((row) => {
-    const data = row.data && typeof row.data === "object" ? row.data as Record<string, unknown> : {};
-    return {
-      weekOf: typeof data.weekOf === "string" ? data.weekOf : row.week_of,
-      days: data.days && typeof data.days === "object"
-        ? data.days as MonthlyWeek["days"]
-        : {},
-    };
-  });
+  const weeks: MonthlyWeek[] = monthlyWeeksFromRows(weeksResult.data ?? []);
   const review = decodeStoredReview(reviewResult.data?.responses, nextMonthKey(month));
-  const evidence = buildMonthlyEvidence(weeks, month, trackerSettingsFromRow(settingsResult.data));
+  const evidence = buildMonthlyEvidence(
+    weeks,
+    month,
+    trackerSettingsFromRow(settingsResult.data),
+    undefined,
+    settingsResult.data?.week_start === "sunday" ? "sunday" : "monday",
+  );
   const pdfBytes = await generateMonthlyReviewPdf({
     label: range.label,
     evidence,

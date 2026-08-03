@@ -42,6 +42,11 @@ describe("monthly review model", () => {
     expect(decodeStoredReview(encodeStoredReview(review), "2026-08")).toEqual(review);
   });
 
+  it("falls back from an invalid stored plan month", () => {
+    const review = decodeStoredReview({ __plan: { targetMonth: "2026-99" } }, "2026-08");
+    expect(review.plan?.targetMonth).toBe("2026-08");
+  });
+
   it("preserves existing cycle goals when the monthly plan leaves fields blank", () => {
     const plan = emptyMonthlyPlan("2026-08");
     plan.territories.business.outcome = "New business outcome";
@@ -77,6 +82,20 @@ describe("monthly evidence", () => {
     },
   }];
 
+  it.each([
+    ["2026-02", "2026-02-28", 28],
+    ["2028-02", "2028-02-29", 29],
+    ["2026-04", "2026-04-30", 30],
+    ["2026-07", "2026-07-31", 31],
+  ])("uses the exact calendar length for %s", (month, through, expected) => {
+    expect(buildMonthlyEvidence([], month, DEFAULT_TRACKER_SETTINGS, through).elapsedDays).toBe(expected);
+  });
+
+  it("uses only elapsed calendar days for an in-progress month", () => {
+    expect(buildMonthlyEvidence([], "2026-08", DEFAULT_TRACKER_SETTINGS, "2026-08-03").elapsedDays).toBe(3);
+    expect(buildMonthlyEvidence([], "2026-09", DEFAULT_TRACKER_SETTINGS, "2026-08-03").elapsedDays).toBe(0);
+  });
+
   it("does not treat untouched calendar days as failed evidence", () => {
     const evidence = buildMonthlyEvidence(weeks, "2026-07", DEFAULT_TRACKER_SETTINGS, "2026-07-31");
     expect(evidence.elapsedDays).toBe(31);
@@ -92,6 +111,23 @@ describe("monthly evidence", () => {
     expect(evidence.basics).toEqual({ ars: 1, ad: 0, cfo: 1 });
     expect(evidence.weeklyTrend).toEqual([{ startsOn: "2026-07-27", trackedDays: 2, score: 3, possible: 10 }]);
     expect(evidence.wins).toEqual([{ date: "2026-07-28", text: "Shipped the release" }]);
+  });
+
+  it("groups weekly trend using the user's Sunday week start", () => {
+    const evidence = buildMonthlyEvidence([{
+      weekOf: "2026-07-05",
+      days: {
+        sun: day({ journal: "Sunday" }),
+        mon: day({ journal: "Monday" }),
+      },
+    }], "2026-07", DEFAULT_TRACKER_SETTINGS, "2026-07-31", "sunday");
+
+    expect(evidence.weeklyTrend).toEqual([{
+      startsOn: "2026-07-05",
+      trackedDays: 2,
+      score: 0,
+      possible: 10,
+    }]);
   });
 
   it("uses calendar days, not tracked days, for boolean tracker frequency", () => {

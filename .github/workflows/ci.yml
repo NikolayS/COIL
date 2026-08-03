@@ -45,16 +45,14 @@ jobs:
       - name: Build
         run: npm run build
 
-  # ── 3. Playwright E2E against live site ────────────────────────────────────
-  #
-  # Runs against https://coil.5am.team (PLAYWRIGHT_BASE_URL).
-  # Auth-gated tests skip gracefully when secrets are absent.
-  # Demo-mode tests (demo.spec.ts) always run — no secrets needed.
+  # ── 3. Playwright E2E against the checked-out change ───────────────────────
   e2e-test:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     env:
-      PLAYWRIGHT_BASE_URL: https://coil.5am.team
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SUPABASE_URL: https://coil.5am.team
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       # Optional: set these secrets in GitHub to enable auth-gated settings tests
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
@@ -67,6 +65,16 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Build checked-out app
+        run: npm run build
+
+      - name: Start checked-out app
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          node .next/standalone/server.js > /tmp/coil-e2e.log 2>&1 &
+          npx wait-on http://127.0.0.1:3000 --timeout 60000
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps

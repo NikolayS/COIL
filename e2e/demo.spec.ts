@@ -214,6 +214,35 @@ test.describe("Demo mode — home page", () => {
     await expect(page.getByText("What did I accomplish this past month that I am most proud of?", { exact: true })).toBeVisible();
   });
 
+  test("monthly evidence includes the final week and renders calendar denominators", async ({ page }) => {
+    test.skip(RUNS_AGAINST_PRODUCTION, "Monthly review fixture must run against the checked-out app");
+    await page.evaluate(() => {
+      localStorage.setItem("coil_tracker_settings", JSON.stringify({ fastingEnabled: true }));
+      localStorage.setItem("coil_archived_weeks", JSON.stringify([{
+        weekOf: "2026-07-27",
+        archivedAt: "2026-08-01T00:00:00.000Z",
+        data: {
+          weekOf: "2026-08-02T00:00:00.000Z",
+          days: {
+            mon: {
+              territories: { self: true, health: false, wealth: false, relationships: false, business: false },
+              trackers: { fasting: true },
+              journal: "Final July week",
+            },
+          },
+          weekly: {},
+        },
+      }]));
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Review" }).click();
+
+    await expect(page.getByText("Week of Jul 27", { exact: true })).toBeVisible();
+    const fasting = page.locator("details", { hasText: "Fasting" });
+    await expect(fasting).toContainText("1/31");
+    await expect(page.getByText("1/31", { exact: true }).first()).toBeVisible();
+  });
+
   test("July review creates and applies an August plan", async ({ page }) => {
     test.skip(RUNS_AGAINST_PRODUCTION, "Monthly review is verified against the PR preview until merged");
     await page.getByRole("button", { name: "Review" }).click();
