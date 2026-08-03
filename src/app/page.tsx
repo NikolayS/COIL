@@ -326,15 +326,15 @@ async function fetchCurrentFromSupabase(userId: string, offset = 0, weekStart: "
   return data?.data ? migrateWeekData(data.data as WeekData) : null;
 }
 
-async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]> {
+async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "sunday" = "monday"): Promise<ArchivedWeek[]> {
   const supabase = createClient();
-  const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  const currentWeekStart = getWeekStart(new Date(), weekStart).toISOString().slice(0, 10);
   // Show ALL past weeks (not just archived ones) — any week before this week
   const { data } = await supabase
     .from("weeks")
     .select("week_of, data, updated_at")
     .eq("user_id", userId)
-    .lt("week_of", currentMonday)
+    .lt("week_of", currentWeekStart)
     .order("week_of", { ascending: false });
   if (!data) return [];
   return data.map((row) => ({
@@ -2359,7 +2359,7 @@ export default function CoilApp() {
         setTrackerSettings(trackerSettingsFromRow(settingsData));
         const [remoteWeek, remoteArchive] = await Promise.all([
           fetchCurrentFromSupabase(user.id, initOffset, ws),
-          fetchArchiveFromSupabase(user.id),
+          fetchArchiveFromSupabase(user.id, ws),
         ]);
         setWeekData(remoteWeek ?? emptyWeekData(getWeekStart(new Date(), ws)));
         setArchive(remoteArchive);
