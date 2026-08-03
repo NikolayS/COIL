@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_TRACKER_SETTINGS } from "@/lib/tracking";
-import { generateMonthlyReviewPdf } from "@/lib/generatePdf";
+import { generateMonthlyReviewPdf, monthlyPdfAnswerKeepTogetherHeight } from "@/lib/generatePdf";
 import {
   MONTHLY_REVIEW_PROMPTS,
   buildMonthlyEvidence,
@@ -26,6 +26,11 @@ function day(overrides: Record<string, unknown> = {}) {
 }
 
 describe("monthly review model", () => {
+  it("reserves space for a PDF question and the first answer lines as one block", () => {
+    expect(monthlyPdfAnswerKeepTogetherHeight(2, 1)).toBe(51);
+    expect(monthlyPdfAnswerKeepTogetherHeight(2, 8)).toBe(64);
+  });
+
   it("uses one combined accomplishments prompt instead of two synonymous questions", () => {
     expect(MONTHLY_REVIEW_PROMPTS[0]).toEqual([
       "proud",

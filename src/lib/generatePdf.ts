@@ -10,6 +10,10 @@ import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, type Tracke
 import { MONTHLY_PLAN_PROMPTS, MONTHLY_REVIEW_PROMPTS, monthRange, type MonthlyEvidence } from "./monthly";
 import { TERRITORY_KEYS, type CycleData, type ReviewData } from "./intentional";
 
+export function monthlyPdfAnswerKeepTogetherHeight(promptLineCount: number, answerLineCount: number): number {
+  return (Math.max(1, promptLineCount) + Math.min(2, Math.max(1, answerLineCount))) * 13 + 12;
+}
+
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const TERRITORIES = [
@@ -476,14 +480,19 @@ export async function generateMonthlyReviewPdf(input: {
     }
     y -= opts.gap ?? 3;
   };
-  const section = (title: string) => {
-    ensure(34);
+  const answerKeepHeight = (prompt: string, value: string) => monthlyPdfAnswerKeepTogetherHeight(
+    wrap(prompt, WIDTH, 10).length,
+    wrap(value.trim() || "—", WIDTH, 10).length,
+  );
+  const section = (title: string, followingHeight = 0) => {
+    ensure(51 + followingHeight);
     y -= 7;
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.7, color: COLORS.light });
     y -= 19;
     text(title, { size: 14, isBold: true, color: COLORS.primary, gap: 8 });
   };
   const answer = (prompt: string, value: string) => {
+    ensure(answerKeepHeight(prompt, value));
     text(prompt, { size: 10, isBold: true, gap: 2 });
     text(value.trim() || "—", { size: 10, color: value.trim() ? COLORS.dark : COLORS.mid, gap: 10 });
   };
@@ -518,18 +527,22 @@ export async function generateMonthlyReviewPdf(input: {
     }
   }
 
-  section("Monthly Review");
+  const firstReviewPrompt = MONTHLY_REVIEW_PROMPTS[0];
+  section("Monthly Review", firstReviewPrompt ? answerKeepHeight(firstReviewPrompt[1], input.review.responses[firstReviewPrompt[0]] ?? "") : 0);
   for (const [key, prompt] of MONTHLY_REVIEW_PROMPTS) answer(prompt, input.review.responses[key] ?? "");
 
-  section("Recorded wins and reflections");
+  const firstRecordedItem = input.evidence.wins[0] ?? input.evidence.reflections[0];
+  section("Recorded wins and reflections", firstRecordedItem ? answerKeepHeight(`Entry — ${firstRecordedItem.date}`, firstRecordedItem.text) : 16);
   if (!input.evidence.wins.length && !input.evidence.reflections.length) text("No journal evidence recorded.", { color: COLORS.mid });
   for (const item of input.evidence.wins) answer(`Win — ${item.date}`, item.text);
   for (const item of input.evidence.reflections) answer(`Reflection — ${item.date}`, item.text);
 
   if (input.review.plan) {
-    section(`Monthly Plan — ${monthRange(input.review.plan.targetMonth).label}`);
+    const firstPlanPrompt = MONTHLY_PLAN_PROMPTS[0];
+    section(`Monthly Plan — ${monthRange(input.review.plan.targetMonth).label}`, firstPlanPrompt ? answerKeepHeight(firstPlanPrompt[1], input.review.plan.responses[firstPlanPrompt[0]] ?? "") : 0);
     for (const [key, prompt] of MONTHLY_PLAN_PROMPTS) answer(prompt, input.review.plan.responses[key] ?? "");
-    section("Territory plan");
+    const firstTerritory = input.review.plan.territories[TERRITORY_KEYS[0]];
+    section("Territory plan", answerKeepHeight(`${TERRITORY_KEYS[0]} — outcome / keystone habit`, `${firstTerritory.outcome || "—"} / ${firstTerritory.keystoneHabit || "—"}`));
     for (const key of TERRITORY_KEYS) {
       const territory = input.review.plan.territories[key];
       answer(`${key} — outcome / keystone habit`, `${territory.outcome || "—"} / ${territory.keystoneHabit || "—"}`);
