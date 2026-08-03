@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_TRACKER_SETTINGS } from "@/lib/tracking";
 import { generateMonthlyReviewPdf } from "@/lib/generatePdf";
 import {
+  MONTHLY_REVIEW_PROMPTS,
   buildMonthlyEvidence,
   decodeStoredReview,
   encodeStoredReview,
@@ -25,6 +26,29 @@ function day(overrides: Record<string, unknown> = {}) {
 }
 
 describe("monthly review model", () => {
+  it("uses one combined accomplishments prompt instead of two synonymous questions", () => {
+    expect(MONTHLY_REVIEW_PROMPTS[0]).toEqual([
+      "proud",
+      "What were my greatest accomplishments this month, and which am I most proud of?",
+    ]);
+    expect(MONTHLY_REVIEW_PROMPTS).toHaveLength(10);
+    expect(MONTHLY_REVIEW_PROMPTS.map(([key]) => String(key))).not.toContain("achievements");
+  });
+
+  it("preserves and combines distinct answers from the two legacy accomplishment fields", () => {
+    const review = decodeStoredReview({
+      proud: "I protected family time",
+      achievements: "I shipped the release",
+      lessons: "Focus",
+    }, "2026-08");
+
+    expect(review.responses).toEqual({
+      proud: "I protected family time\n\nI shipped the release",
+      lessons: "Focus",
+    });
+    expect(encodeStoredReview(review).__review).not.toHaveProperty("achievements");
+  });
+
   it("uses one month-scoped storage key for both Review → Plan and the Plan tab", () => {
     expect(monthlyPlanStorageKey("2026-08")).toBe("coil_monthly_plan_2026-08");
     expect(() => monthlyPlanStorageKey("2026-13")).toThrow("Invalid month");

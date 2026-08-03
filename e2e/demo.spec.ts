@@ -218,7 +218,8 @@ test.describe("Demo mode — home page", () => {
 
     await expect(page.getByText("No goals were set for July 2026", { exact: false })).toBeVisible();
     await expect(page.getByText("You can still complete the review from memory", { exact: false })).toBeVisible();
-    await expect(page.getByText("What did I accomplish this past month that I am most proud of?", { exact: true })).toBeVisible();
+    await expect(page.getByText("What were my greatest accomplishments this month, and which am I most proud of?", { exact: true })).toBeVisible();
+    await expect(page.getByText("What were my greatest achievements this past month?", { exact: true })).toHaveCount(0);
   });
 
   test("monthly evidence includes the final week and renders calendar denominators", async ({ page }) => {

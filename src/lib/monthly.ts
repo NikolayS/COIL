@@ -15,8 +15,7 @@ import {
 } from "./tracking";
 
 export const MONTHLY_REVIEW_PROMPTS = [
-  ["proud", "What did I accomplish this past month that I am most proud of?"],
-  ["achievements", "What were my greatest achievements this past month?"],
+  ["proud", "What were my greatest accomplishments this month, and which am I most proud of?"],
   ["priority", "What was my biggest priority? Did I achieve it?"],
   ["changed", "How am I different from last month?"],
   ["plan", "What did not go according to plan? What needs more focus?"],
@@ -173,15 +172,26 @@ export function decodeStoredReview(value: unknown, targetMonth: string): ReviewD
       ? saved.responses as Record<string, unknown>
       : saved;
   return {
-    responses: Object.fromEntries(
-      Object.entries(nested).filter((entry): entry is [string, string] => !entry[0].startsWith("__") && typeof entry[1] === "string"),
-    ),
+    responses: normalizeReviewResponses(nested),
     plan: normalizeMonthlyPlan(saved.__plan ?? saved.plan, targetMonth),
   };
 }
 
 export function encodeStoredReview(review: ReviewData): Record<string, unknown> {
-  return { __review: review.responses, __plan: review.plan };
+  return { __review: normalizeReviewResponses(review.responses), __plan: review.plan };
+}
+
+function normalizeReviewResponses(value: Record<string, unknown>): Record<string, string> {
+  const responses = Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => !entry[0].startsWith("__") && typeof entry[1] === "string"),
+  );
+  if ("proud" in responses || "achievements" in responses) {
+    const accomplishments = [cleanText(responses.proud), cleanText(responses.achievements)]
+      .filter((answer, index, answers) => answer !== "" && answers.indexOf(answer) === index);
+    responses.proud = accomplishments.join("\n\n");
+    delete responses.achievements;
+  }
+  return responses;
 }
 
 export function hasRecordedActivity(day: MonthlyDay | null | undefined): boolean {
