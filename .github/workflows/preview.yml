@@ -13,28 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Diagnose omitted final July week
-        run: |
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          RESULT=$(ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
-            "docker exec -i supabase-db-1 psql -U postgres -d postgres -At" <<'SQL'
-          with target_user as (
-            select id from auth.users where email = 'nik@postgres.ai' limit 1
-          )
-          select 'WEEK_START=' || coalesce(week_start, 'null')
-          from public.settings where user_id = (select id from target_user)
-          union all
-          select 'WEEK_ROW=' || week_of || ':embedded=' || coalesce(data->>'weekOf', 'null') || ':archived=' || archived || ':fasting_true=' ||
-            (select count(*) from jsonb_each(weeks.data->'days') day where day.value->'trackers'->>'fasting' = 'true')
-          from public.weeks weeks
-          where user_id = (select id from target_user)
-            and week_of >= date '2026-07-26'
-          order by 1;
-          SQL
-          )
-          echo "FINAL_WEEK_DIAGNOSTIC=${RESULT}"
-
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)

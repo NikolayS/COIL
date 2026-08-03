@@ -1721,6 +1721,7 @@ function ReviewTab({
     plan: emptyMonthlyPlan(nextMonthKey(defaultReviewMonth)),
   }));
   const [reviewCycle, setReviewCycle] = useState<CycleData | null>(null);
+  const [remoteEvidenceWeeks, setRemoteEvidenceWeeks] = useState<MonthlyWeek[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1837,6 +1838,39 @@ function ReviewTab({
     };
   }, [periodKey, type, user, targetMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setRemoteEvidenceWeeks(null);
+      return;
+    }
+
+    const loadEvidenceWeeks = async () => {
+      const earliest = new Date(`${period.startsOn}T12:00:00Z`);
+      if (type === "month") earliest.setUTCMonth(earliest.getUTCMonth() - 1);
+      earliest.setUTCDate(earliest.getUTCDate() - 6);
+
+      const { data: rows } = await createClient()
+        .from("weeks")
+        .select("week_of, data")
+        .eq("user_id", user.id)
+        .gte("week_of", isoDate(earliest))
+        .lte("week_of", period.endsOn)
+        .order("week_of", { ascending: true });
+      if (cancelled) return;
+      setRemoteEvidenceWeeks((rows ?? []).flatMap((row) => {
+        const week = row.data && typeof row.data === "object" ? row.data as Partial<WeekData> : null;
+        return week?.days ? [{ weekOf: row.week_of, days: week.days }] : [];
+      }));
+    };
+
+    setRemoteEvidenceWeeks(null);
+    void loadEvidenceWeeks();
+    return () => {
+      cancelled = true;
+    };
+  }, [period.startsOn, period.endsOn, type, user]);
+
   const allWeeks: MonthlyWeek[] = [
     { weekOf: data.weekOf, days: data.days },
     ...archive,
@@ -1844,14 +1878,15 @@ function ReviewTab({
     .filter((week, index, weeks) =>
     weeks.findIndex((candidate) => candidate.weekOf === week.weekOf) === index
   );
+  const evidenceWeeks = user ? (remoteEvidenceWeeks ?? []) : allWeeks;
   const today = isoDate(new Date());
-  const monthlyEvidence = buildMonthlyEvidence(allWeeks, safeMonth, trackerSettings, today);
-  const previousEvidence = buildMonthlyEvidence(allWeeks, (() => {
+  const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today);
+  const previousEvidence = buildMonthlyEvidence(evidenceWeeks, (() => {
     const date = new Date(`${safeMonth}-01T12:00:00Z`);
     date.setUTCMonth(date.getUTCMonth() - 1);
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
   })(), trackerSettings, today);
-  const selectedDays = collectPeriodDays(allWeeks, period.startsOn, period.endsOn, today);
+  const selectedDays = collectPeriodDays(evidenceWeeks, period.startsOn, period.endsOn, today);
   const trackedPeriodDays = selectedDays.filter((day) => hasRecordedActivity(day.data));
   const totalScore = trackedPeriodDays.reduce(
     (sum, day) => sum + Object.values(day.data.territories ?? {}).filter(Boolean).length,
