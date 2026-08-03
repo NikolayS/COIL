@@ -170,9 +170,16 @@ test.describe("Demo mode — home page", () => {
     await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
 
     await page.getByRole("button", { name: "Previous week" }).click();
-
     await expect(page.getByRole("button", { name: "Review", exact: true }).last()).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
+  });
+
+  test("locked past-day controls are disabled for keyboard as well as pointer input", async ({ page }) => {
+    await page.getByRole("button", { name: "Previous week" }).click();
+    await page.getByRole("button", { name: /^Mon 0$/ }).click();
+    const locked = page.locator("fieldset:disabled").first();
+    await expect(locked).toBeVisible();
+    await expect(locked.locator("input, textarea, button").first()).toBeDisabled();
   });
 
   test("tab navigation works — Review shows monthly report actions", async ({ page }) => {

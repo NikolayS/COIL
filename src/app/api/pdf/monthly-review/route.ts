@@ -8,7 +8,7 @@ import {
   nextMonthKey,
   type MonthlyWeek,
 } from "@/lib/monthly";
-import { monthlyWeeksFromRows } from "@/lib/monthly-data";
+import { localDateInTimeZone, monthlyWeeksFromRows } from "@/lib/monthly-data";
 import {
   TERRITORY_KEYS,
   emptyTerritoryCommitments,
@@ -17,7 +17,7 @@ import {
 } from "@/lib/intentional";
 import { trackerSettingsFromRow } from "@/lib/tracking";
 
-const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+const MONTH = /^(20[2-9]\d|2100)-(0[1-9]|1[0-2])$/;
 
 function normalizeCycle(row: {
   starts_on: string;
@@ -83,7 +83,7 @@ export async function GET(req: Request) {
       .maybeSingle(),
     supabase
       .from("settings")
-      .select("tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled, week_start")
+      .select("tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled, week_start, timezone")
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -97,7 +97,10 @@ export async function GET(req: Request) {
     weeks,
     month,
     trackerSettingsFromRow(settingsResult.data),
-    undefined,
+    localDateInTimeZone(
+      new Date(),
+      typeof settingsResult.data?.timezone === "string" ? settingsResult.data.timezone : "UTC",
+    ),
     settingsResult.data?.week_start === "sunday" ? "sunday" : "monday",
   );
   const pdfBytes = await generateMonthlyReviewPdf({

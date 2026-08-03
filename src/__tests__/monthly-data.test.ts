@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   evidenceQueryRange,
+  localDateInTimeZone,
   monthlyWeeksFromResult,
   monthlyWeeksFromRows,
+  previousMonthKeyInTimeZone,
 } from "@/lib/monthly-data";
 
 describe("monthly review evidence loading", () => {
@@ -45,5 +47,22 @@ describe("monthly review evidence loading", () => {
   it("never turns a failed evidence query into an authoritative empty month", () => {
     expect(() => monthlyWeeksFromResult({ data: null, error: { message: "network down" } }))
       .toThrow("network down");
+  });
+
+  it("uses the user's local calendar day at UTC boundaries", () => {
+    const instant = new Date("2026-08-01T00:30:00.000Z");
+    expect(localDateInTimeZone(instant, "America/Los_Angeles")).toBe("2026-07-31");
+    expect(localDateInTimeZone(instant, "Pacific/Auckland")).toBe("2026-08-01");
+  });
+
+  it("falls back safely when a stored timezone is invalid", () => {
+    expect(localDateInTimeZone(new Date("2026-08-01T00:30:00.000Z"), "Not/AZone"))
+      .toBe("2026-08-01");
+  });
+
+  it("chooses the default review month in the user's timezone", () => {
+    const instant = new Date("2026-08-01T00:30:00.000Z");
+    expect(previousMonthKeyInTimeZone(instant, "America/Los_Angeles")).toBe("2026-06");
+    expect(previousMonthKeyInTimeZone(instant, "Pacific/Auckland")).toBe("2026-07");
   });
 });

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const initSql = readFileSync(resolve(process.cwd(), "supabase/init.sql"), "utf8");
 const deployWorkflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+const appSource = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 
 describe("intentional living schema", () => {
   it("defines cycles and period reviews for fresh installations", () => {
@@ -26,5 +27,21 @@ describe("intentional living schema", () => {
     expect(deployWorkflow).toContain("grant select, insert, update, delete on public.cycles to authenticated");
     expect(deployWorkflow).toContain("grant select, insert, update, delete on public.period_reviews to authenticated");
     expect(deployWorkflow).not.toMatch(/grant all on public\.(cycles|period_reviews) to authenticated/i);
+  });
+
+  it("never grants authenticated users TRUNCATE-capable table privileges", () => {
+    expect(initSql).not.toMatch(/grant all on public\.(weeks|settings|cycles|period_reviews) to authenticated/i);
+    expect(deployWorkflow).not.toMatch(/grant all on public\.(weeks|settings|cycles|period_reviews) to authenticated/i);
+    for (const table of ["weeks", "settings", "cycles", "period_reviews"]) {
+      expect(initSql).toContain(`grant select, insert, update, delete on public.${table} to authenticated`);
+      expect(deployWorkflow).toContain(`grant select, insert, update, delete on public.${table} to authenticated`);
+    }
+  });
+
+  it("saves a review and optional cycle in one database transaction", () => {
+    expect(initSql).toContain("function public.save_period_review_and_cycle");
+    expect(initSql).toContain("grant execute on function public.save_period_review_and_cycle");
+    expect(deployWorkflow).toContain("function public.save_period_review_and_cycle");
+    expect(appSource).toContain('.rpc("save_period_review_and_cycle"');
   });
 });

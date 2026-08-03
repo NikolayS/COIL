@@ -7,6 +7,7 @@ import {
   encodeStoredReview,
   emptyMonthlyPlan,
   mergeMonthlyPlanWithCycle,
+  monthRange,
   nextMonthKey,
   type MonthlyWeek,
 } from "@/lib/monthly";
@@ -26,6 +27,11 @@ describe("monthly review model", () => {
   it("plans the month after the reviewed month across year boundaries", () => {
     expect(nextMonthKey("2026-07")).toBe("2026-08");
     expect(nextMonthKey("2026-12")).toBe("2027-01");
+  });
+
+  it("rejects month years outside the supported review range", () => {
+    expect(() => monthRange("0099-01")).toThrow("Invalid month");
+    expect(() => monthRange("2101-01")).toThrow("Invalid month");
   });
 
   it("loads legacy review answers without requiring goals", () => {
@@ -94,6 +100,24 @@ describe("monthly evidence", () => {
   it("uses only elapsed calendar days for an in-progress month", () => {
     expect(buildMonthlyEvidence([], "2026-08", DEFAULT_TRACKER_SETTINGS, "2026-08-03").elapsedDays).toBe(3);
     expect(buildMonthlyEvidence([], "2026-09", DEFAULT_TRACKER_SETTINGS, "2026-08-03").elapsedDays).toBe(0);
+  });
+
+  it("ignores malformed legacy day keys without losing valid evidence", () => {
+    const evidence = buildMonthlyEvidence([{
+      weekOf: "2026-07-27",
+      days: {
+        mon: day({ trackers: { fasting: true } }),
+        invalid: day({ journal: "bad key" }),
+      },
+    }], "2026-07", {
+      trackers: DEFAULT_TRACKER_SETTINGS.trackers.map((tracker) => ({
+        ...tracker,
+        enabled: tracker.id === "fasting",
+      })),
+    }, "2026-07-31");
+
+    expect(evidence.trackedDays).toBe(1);
+    expect(evidence.trackers[0].summary).toBe("1/31");
   });
 
   it("does not treat untouched calendar days as failed evidence", () => {

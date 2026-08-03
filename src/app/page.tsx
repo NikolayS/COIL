@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { nullableDataOrThrow } from "@/lib/supabase-result";
 import { generateReport, generatePlainReportHtml } from "@/lib/report";
 import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "@/lib/tracking";
 import {
@@ -20,7 +21,7 @@ import {
   periodDays as collectPeriodDays,
   type MonthlyWeek,
 } from "@/lib/monthly";
-import { evidenceQueryRange, monthlyWeeksFromResult } from "@/lib/monthly-data";
+import { evidenceQueryRange, localDateInTimeZone, monthlyWeeksFromResult, previousMonthKeyInTimeZone } from "@/lib/monthly-data";
 import {
   TERRITORY_KEYS,
   createDefaultCycle,
@@ -309,6 +310,20 @@ async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: Ab
   return error ? error.message : null;
 }
 
+const weekSaveQueues = new Map<string, Promise<string | null>>();
+
+function queueWeekSave(userId: string, data: WeekData, isPastWeek: boolean): Promise<string | null> {
+  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  const key = `${userId}:${weekOf}`;
+  const previous = weekSaveQueues.get(key) ?? Promise.resolve(null);
+  const next = previous.catch(() => null).then(() => syncCurrentToSupabase(userId, data, undefined, isPastWeek));
+  weekSaveQueues.set(key, next);
+  void next.finally(() => {
+    if (weekSaveQueues.get(key) === next) weekSaveQueues.delete(key);
+  });
+  return next;
+}
+
 function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "monday"): Date {
   const d = getWeekStart(new Date(), weekStart);
   d.setDate(d.getDate() + offset * 7);
@@ -318,13 +333,14 @@ function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "mo
 async function fetchCurrentFromSupabase(userId: string, offset = 0, weekStart: "monday" | "sunday" = "monday"): Promise<WeekData | null> {
   const supabase = createClient();
   const monday = getMondayForOffset(offset, weekStart).toISOString().slice(0, 10);
-  const { data } = await supabase
+  let query = supabase
     .from("weeks")
     .select("data")
     .eq("user_id", userId)
-    .eq("week_of", monday)
-    .eq("archived", false)
-    .maybeSingle();
+    .eq("week_of", monday);
+  if (offset === 0) query = query.eq("archived", false);
+  const result = await query.maybeSingle();
+  const data = nullableDataOrThrow(result);
   return data?.data ? migrateWeekData(data.data as WeekData) : null;
 }
 
@@ -886,7 +902,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
       )}
 
       {phase === "plan" ? (
-        <div className={`space-y-3 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
+        <fieldset disabled={isLocked} className={`space-y-3 ${isLocked ? "opacity-50" : ""}`}>
           {carriedPriority && (
             <div className="rounded-xl border border-[--gold-border] bg-[--gold-bg] px-4 py-3">
               <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-[--gold]">Carried from yesterday</p>
@@ -908,9 +924,9 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
           <p className="text-xs leading-5 text-[--text-faint]">
             Weekly priorities appear as suggestions. Write a concrete action you can finish today.
           </p>
-        </div>
+        </fieldset>
       ) : (
-        <div className={`space-y-6 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
+        <fieldset disabled={isLocked} className={`space-y-6 ${isLocked ? "opacity-50" : ""}`}>
           <div className="space-y-3">
             {TERRITORIES.map((territory) => (
               <CommitmentRow
@@ -1013,7 +1029,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
               onChange={(reflection) => updateDay({ reflection })}
             />
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   );
@@ -1735,6 +1751,7 @@ function ReviewTab({
   archive,
   trackerSettings,
   weekStart,
+  timeZone,
 }: {
   user: User | null;
   data: WeekData;
@@ -1742,15 +1759,18 @@ function ReviewTab({
   archive: ArchivedWeek[];
   trackerSettings: TrackerSettings;
   weekStart: "monday" | "sunday";
+  timeZone: string;
 }) {
   const now = new Date();
-  const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const defaultReviewMonth = `${previousMonth.getUTCFullYear()}-${String(previousMonth.getUTCMonth() + 1).padStart(2, "0")}`;
+  const localToday = localDateInTimeZone(now, timeZone);
+  const localYear = Number(localToday.slice(0, 4));
+  const localMonthIndex = Number(localToday.slice(5, 7)) - 1;
+  const defaultReviewMonth = previousMonthKeyInTimeZone(now, timeZone);
   const [type, setType] = useState<ReviewType>("month");
   const [monthlyPhase, setMonthlyPhase] = useState<"review" | "plan">("review");
   const [month, setMonth] = useState(defaultReviewMonth);
-  const [quarterYear, setQuarterYear] = useState(now.getUTCFullYear());
-  const [quarter, setQuarter] = useState(Math.floor(now.getUTCMonth() / 3) + 1);
+  const [quarterYear, setQuarterYear] = useState(localYear);
+  const [quarter, setQuarter] = useState(Math.floor(localMonthIndex / 3) + 1);
   const [review, setReview] = useState<ReviewData>(() => ({
     responses: {},
     plan: emptyMonthlyPlan(nextMonthKey(defaultReviewMonth)),
@@ -1759,18 +1779,24 @@ function ReviewTab({
   const [remoteEvidenceWeeks, setRemoteEvidenceWeeks] = useState<MonthlyWeek[] | null>(null);
   const [evidenceStatus, setEvidenceStatus] = useState<"loading" | "ready" | "error">(user ? "loading" : "ready");
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [loadedEvidenceKey, setLoadedEvidenceKey] = useState<string | null>(user ? null : "demo");
   const [loading, setLoading] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState(false);
-  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : defaultReviewMonth;
+  const currentMonth = localToday.slice(0, 7);
+  const requestedMonthYear = Number(month.slice(0, 4));
+  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && requestedMonthYear >= 2020 && requestedMonthYear <= 2100
+    ? month
+    : defaultReviewMonth;
   const safeQuarterYear = Number.isInteger(quarterYear) && quarterYear >= 2020 && quarterYear <= 2100
     ? quarterYear
-    : now.getUTCFullYear();
+    : localYear;
   const periodKey = type === "month" ? safeMonth : `${safeQuarterYear}-Q${quarter}`;
   const period = getReviewPeriod(type, periodKey);
   const targetMonth = type === "month" ? nextMonthKey(safeMonth) : currentMonth;
+  const evidenceRequestKey = `${type}:${period.startsOn}:${period.endsOn}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -1778,6 +1804,7 @@ function ReviewTab({
       await Promise.resolve();
       if (cancelled) return;
       setLoading(true);
+      setReviewLoadError(null);
       setSaveError(null);
       setReviewCycle(null);
       if (!user) {
@@ -1835,7 +1862,9 @@ function ReviewTab({
       ]);
       if (cancelled) return;
       if (savedResult.error || cycleResult.error) {
-        setSaveError(savedResult.error?.message ?? cycleResult.error?.message ?? "Could not load review");
+        const message = savedResult.error?.message ?? cycleResult.error?.message ?? "Could not load review";
+        setSaveError(message);
+        setReviewLoadError(message);
       }
       const savedReview = type === "month"
         ? decodeStoredReview(savedResult.data?.responses, targetMonth)
@@ -1851,7 +1880,10 @@ function ReviewTab({
             .maybeSingle()
         : { data: null, error: null };
       if (cancelled) return;
-      if (planCycleResult.error) setSaveError(planCycleResult.error.message);
+      if (planCycleResult.error) {
+        setSaveError(planCycleResult.error.message);
+        setReviewLoadError(planCycleResult.error.message);
+      }
       const targetCycle = planCycleResult.data ? normalizeCycle({
         startsOn: planCycleResult.data.starts_on,
         endsOn: planCycleResult.data.ends_on,
@@ -1888,6 +1920,7 @@ function ReviewTab({
       setRemoteEvidenceWeeks(null);
       setEvidenceStatus("ready");
       setEvidenceError(null);
+      setLoadedEvidenceKey("demo");
       return;
     }
 
@@ -1905,9 +1938,11 @@ function ReviewTab({
       try {
         setRemoteEvidenceWeeks(monthlyWeeksFromResult(result));
         setEvidenceStatus("ready");
+        setLoadedEvidenceKey(evidenceRequestKey);
       } catch (error) {
         setRemoteEvidenceWeeks(null);
         setEvidenceStatus("error");
+        setLoadedEvidenceKey(null);
         setEvidenceError(error instanceof Error ? error.message : "Could not load monthly evidence");
       }
     };
@@ -1915,11 +1950,12 @@ function ReviewTab({
     setRemoteEvidenceWeeks(null);
     setEvidenceStatus("loading");
     setEvidenceError(null);
+    setLoadedEvidenceKey(null);
     void loadEvidenceWeeks();
     return () => {
       cancelled = true;
     };
-  }, [period.startsOn, period.endsOn, type, user]);
+  }, [period.startsOn, period.endsOn, type, user, evidenceRequestKey]);
 
   const allWeeks: MonthlyWeek[] = [
     { weekOf: data.weekOf, days: data.days },
@@ -1929,8 +1965,9 @@ function ReviewTab({
     weeks.findIndex((candidate) => candidate.weekOf === week.weekOf) === index
   );
   const evidenceWeeks = user ? (remoteEvidenceWeeks ?? []) : allWeeks;
-  const evidenceReady = !user || evidenceStatus === "ready";
-  const today = isoDate(new Date());
+  const evidenceReady = !user || (evidenceStatus === "ready" && loadedEvidenceKey === evidenceRequestKey);
+  const reviewReady = !loading && reviewLoadError === null;
+  const today = localDateInTimeZone(new Date(), timeZone);
   const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today, weekStart);
   const previousEvidence = buildMonthlyEvidence(evidenceWeeks, (() => {
     const date = new Date(`${safeMonth}-01T12:00:00Z`);
@@ -1953,8 +1990,8 @@ function ReviewTab({
   const prompts = type === "month" ? MONTHLY_REVIEW_PROMPTS : QUARTERLY_REVIEW_PROMPTS;
 
   const saveReview = async (applyPlan = false) => {
-    if (!evidenceReady) {
-      setSaveError("Wait for evidence to load before saving.");
+    if (!evidenceReady || !reviewReady) {
+      setSaveError("Wait for the review and evidence to load before saving.");
       return;
     }
     setSaveStatus("saving");
@@ -2008,15 +2045,17 @@ function ReviewTab({
     if (!user) {
       localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(storedResponses));
     } else {
-      const { error } = await createClient().from("period_reviews").upsert({
-        user_id: user.id,
-        review_type: type,
-        starts_on: period.startsOn,
-        ends_on: period.endsOn,
-        responses: storedResponses,
-        snapshot,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,review_type,starts_on" });
+      const { error } = await createClient().rpc("save_period_review_and_cycle", {
+        p_review_type: type,
+        p_starts_on: period.startsOn,
+        p_ends_on: period.endsOn,
+        p_responses: storedResponses,
+        p_snapshot: snapshot,
+        p_cycle_starts_on: cycleToApply?.startsOn ?? null,
+        p_cycle_ends_on: cycleToApply?.endsOn ?? null,
+        p_cycle_must_win: cycleToApply?.mustWin ?? null,
+        p_cycle_territories: cycleToApply?.territories ?? null,
+      });
       if (error) {
         setSaveStatus("error");
         setSaveError(error.message);
@@ -2029,21 +2068,6 @@ function ReviewTab({
       const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
       if (!user) {
         localStorage.setItem("coil_active_cycle", JSON.stringify(cycle));
-      } else {
-        const { error } = await createClient().from("cycles").upsert({
-          user_id: user.id,
-          starts_on: cycle.startsOn,
-          ends_on: cycle.endsOn,
-          must_win: cycle.mustWin,
-          territories: cycle.territories,
-          status: "active",
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,starts_on,ends_on" });
-        if (error) {
-          setSaveStatus("error");
-          setSaveError(error.message);
-          return;
-        }
       }
       const weekStartDate = new Date(data.weekOf);
       const weekEndDate = new Date(weekStartDate);
@@ -2312,7 +2336,7 @@ function ReviewTab({
       <button
         type="button"
         onClick={() => void saveReview(type === "month" && monthlyPhase === "plan")}
-        disabled={saveStatus === "saving" || !evidenceReady}
+        disabled={saveStatus === "saving" || !evidenceReady || !reviewReady}
         className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
         style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
       >
@@ -2387,6 +2411,7 @@ export default function CoilApp() {
   const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
+  const [timeZone, setTimeZone] = useState("UTC");
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
@@ -2396,11 +2421,9 @@ export default function CoilApp() {
   const weekOffsetInitialized = useRef(initOffset !== 0); // skip initial nav effect run (auth effect handles it)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [weekLoadError, setWeekLoadError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncAbort = useRef<AbortController | null>(null);
-  const weekDataRef = useRef(weekData);
-  weekDataRef.current = weekData;
+  const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -2444,39 +2467,58 @@ export default function CoilApp() {
   // Auth check → populate state from the right source, no flicker
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user }, error: authError }) => {
+      if (authError && authError.name !== "AuthSessionMissingError") throw authError;
       if (user) {
         // Authenticated: Supabase is the only source. Never touch localStorage.
         setUser(user);
         demoClearAll(); // wipe any leftover demo data
         // Load settings (for weekStart) in parallel
         const supabaseClient = createClient();
-        const { data: settingsData } = await supabaseClient
+        const settingsResult = await supabaseClient
           .from("settings")
-          .select("week_start, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+          .select("week_start, timezone, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
           .eq("user_id", user.id)
           .maybeSingle();
+        const settingsData = nullableDataOrThrow(settingsResult);
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
+        setTimeZone(typeof settingsData?.timezone === "string" ? settingsData.timezone : "UTC");
         setTrackerSettings(trackerSettingsFromRow(settingsData));
-        const requestedWeek = isoDate(getMondayForOffset(initOffset, ws));
-        const [remoteWeek, remoteArchive, activeCycle] = await Promise.all([
-          fetchCurrentFromSupabase(user.id, initOffset, ws),
-          fetchArchiveFromSupabase(user.id, ws),
-          fetchCycleForWeek(user.id, requestedWeek),
-        ]);
-        setWeekData(applyCycleToWeek(
-          remoteWeek ?? emptyWeekData(getMondayForOffset(initOffset, ws)),
-          activeCycle,
-        ));
-        setArchive(remoteArchive);
+        const resolvedOffset = initWeekDate ? (() => {
+          const target = new Date(`${initWeekDate}T12:00:00Z`);
+          const current = getWeekStart(new Date(), ws);
+          return Math.round((target.getTime() - current.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        })() : 0;
+        weekOffsetRef.current = resolvedOffset;
+        weekOffsetInitialized.current = true;
+        setWeekOffset(resolvedOffset);
+        const requestedWeek = isoDate(getMondayForOffset(resolvedOffset, ws));
+        try {
+          const [remoteWeek, remoteArchive, activeCycle] = await Promise.all([
+            fetchCurrentFromSupabase(user.id, resolvedOffset, ws),
+            fetchArchiveFromSupabase(user.id, ws),
+            fetchCycleForWeek(user.id, requestedWeek),
+          ]);
+          setWeekLoadError(null);
+          setWeekData(applyCycleToWeek(
+            remoteWeek ?? emptyWeekData(getMondayForOffset(resolvedOffset, ws)),
+            activeCycle,
+          ));
+          setArchive(remoteArchive);
+        } catch (error) {
+          setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
+        }
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
         setUser(null);
+        setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
         setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
         setWeekData(demoLoadCurrent());
         setArchive(demoLoadArchive());
       }
+    }).catch((error) => {
+      setWeekLoadError(error instanceof Error ? error.message : "Could not verify authentication");
     });
   }, []);
 
@@ -2503,10 +2545,13 @@ export default function CoilApp() {
       fetchCurrentFromSupabase(user.id, weekOffset, weekStart),
       fetchCycleForWeek(user.id, requestedWeek),
     ]).then(([week, cycle]) => {
+      setWeekLoadError(null);
       setWeekData(applyCycleToWeek(
         week ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)),
         cycle,
       ));
+    }).catch((error) => {
+      setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
     });
   }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2564,24 +2609,14 @@ export default function CoilApp() {
       return;
     }
     if (!user) return;
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      const latestData = weekDataRef.current;
-      if (!latestData) return;
-      // Abort any in-flight save before starting a new one
-      if (syncAbort.current) syncAbort.current.abort();
-      const controller = new AbortController();
-      syncAbort.current = controller;
+    const dataToSave = weekData;
+    const saveKey = new Date(dataToSave.weekOf).toISOString().slice(0, 10);
+    const priorTimer = syncTimers.current.get(saveKey);
+    if (priorTimer) clearTimeout(priorTimer);
+    const timer = setTimeout(() => {
+      syncTimers.current.delete(saveKey);
       setSaveStatus("saving");
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        setSaveStatus("timeout");
-        setSaveError("Timed out");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-      }, 10000);
-      syncCurrentToSupabase(user.id, latestData, controller.signal, weekOffset !== 0).then((err) => {
-        clearTimeout(timeoutId);
-        if (controller.signal.aborted) return;
+      queueWeekSave(user.id, dataToSave, weekOffset !== 0).then((err) => {
         if (err) {
           setSaveError(err);
           setSaveStatus("error");
@@ -2593,31 +2628,37 @@ export default function CoilApp() {
           // Update in-memory archive if editing a past week
           if (weekOffset !== 0) {
             setArchive(prev => {
-              const wOf = weekData.weekOf;
+              const wOf = dataToSave.weekOf;
               const exists = prev.some(a => a.weekOf === wOf);
               if (exists) {
-                return prev.map(a => a.weekOf === wOf ? { ...a, data: weekData } : a);
+                return prev.map(a => a.weekOf === wOf ? { ...a, data: dataToSave } : a);
               }
-              return [{ weekOf: wOf, data: weekData, archivedAt: new Date().toISOString() }, ...prev];
+              return [{ weekOf: wOf, data: dataToSave, archivedAt: new Date().toISOString() }, ...prev];
             });
           }
         }
       }).catch((e) => {
-        clearTimeout(timeoutId);
-        if (controller.signal.aborted) return;
         console.error("Autosave failed:", e);
         setSaveError(String(e));
         setSaveStatus("error");
         setTimeout(() => setSaveStatus("idle"), 4000);
       });
     }, 1500);
+    syncTimers.current.set(saveKey, timer);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — auth check pending
   if (!weekData) {
     return (
       <div className="min-h-screen bg-[--bg] flex items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading…</p>
+        {weekLoadError ? (
+          <div className="space-y-4 text-center">
+            <p className="text-sm text-red-400">Could not load this week: {weekLoadError}</p>
+            <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-[--border] px-4 py-2 text-sm text-[--text-muted]">Retry</button>
+          </div>
+        ) : (
+          <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading…</p>
+        )}
       </div>
     );
   }
@@ -2741,7 +2782,7 @@ export default function CoilApp() {
             <CycleTab user={user} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} />
+            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} />
           )}
         </div>
       </div>

@@ -33,4 +33,10 @@ describe("pull-request end-to-end workflow", () => {
     expect(ciWorkflow).toContain("npm run build");
     expect(ciWorkflow).toContain("node .next/standalone/server.js");
   });
+
+  it("executes the real RLS and atomic-save database contract", () => {
+    expect(ciWorkflow).toContain("DB Integration (RLS + Atomic Save)");
+    expect(ciWorkflow).toContain("supabase/tests/intentional_integration.sql");
+    expect(ciWorkflow.match(/20260803_monthly_review_atomic\.sql/g)?.length).toBeGreaterThanOrEqual(2);
+  });
 });

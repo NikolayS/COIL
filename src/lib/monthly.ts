@@ -101,14 +101,17 @@ function cleanText(value: unknown): string {
 
 export function nextMonthKey(month: string): string {
   const match = /^(\d{4})-(\d{2})$/.exec(month);
-  if (!match) throw new Error("Invalid month");
+  const year = Number(match?.[1]);
+  const monthNumber = Number(match?.[2]);
+  if (!match || year < 2020 || year > 2100 || monthNumber < 1 || monthNumber > 12) throw new Error("Invalid month");
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]), 1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 export function monthRange(month: string): { startsOn: string; endsOn: string; label: string } {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
-  if (!match) throw new Error("Invalid month");
+  const year = Number(match?.[1]);
+  if (!match || year < 2020 || year > 2100) throw new Error("Invalid month");
   const start = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
   const end = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0));
   return {
@@ -253,7 +256,7 @@ export function periodDays(
   const candidates = weeks.flatMap((week) => {
     const start = new Date(week.weekOf.includes("T") ? week.weekOf : `${week.weekOf}T12:00:00Z`);
     const startDayNumber = start.getUTCDay();
-    return Object.entries(week.days).map(([day, data]) => {
+    return Object.entries(week.days).filter(([day]) => day in DAY_NUMBERS).map(([day, data]) => {
       const date = new Date(start);
       date.setUTCDate(date.getUTCDate() + ((DAY_NUMBERS[day] - startDayNumber + 7) % 7));
       return { date: isoDate(date), data };
