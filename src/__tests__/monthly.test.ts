@@ -108,6 +108,29 @@ describe("monthly evidence", () => {
     expect(evidence.trackers.find((tracker) => tracker.id === "gym")?.summary).toBe("1/31");
   });
 
+  it("merges evidence from overlapping weekly records for the same calendar day", () => {
+    const evidence = buildMonthlyEvidence([{
+      weekOf: "2026-07-05",
+      days: {
+        mon: day({ bagels: 2, fasting: true }),
+      },
+    }, {
+      weekOf: "2026-07-06",
+      days: {
+        mon: day({ bagels: 0, journal: "Edited from the Monday-start week" }),
+      },
+    }], "2026-07", {
+      trackers: DEFAULT_TRACKER_SETTINGS.trackers.map((tracker) => ({
+        ...tracker,
+        enabled: tracker.id === "bagels" || tracker.id === "fasting",
+      })),
+    }, "2026-07-31");
+
+    expect(evidence.trackedDays).toBe(1);
+    expect(evidence.trackers.find((tracker) => tracker.id === "bagels")?.summary).toBe("2");
+    expect(evidence.trackers.find((tracker) => tracker.id === "fasting")?.summary).toBe("1/31");
+  });
+
   it("generates a complete monthly PDF even when no goals were set", async () => {
     const review = decodeStoredReview({
       proud: "Shipped the release",

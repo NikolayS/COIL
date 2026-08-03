@@ -184,13 +184,67 @@ export function hasRecordedActivity(day: MonthlyDay | null | undefined): boolean
   return [day.gratitude, day.wins, day.journal, day.reflection].some((value) => cleanText(value) !== "");
 }
 
+function mergeTrackerValues(
+  left: Record<string, TrackerValue> = {},
+  right: Record<string, TrackerValue> = {},
+): Record<string, TrackerValue> {
+  const merged = { ...left };
+  for (const [key, value] of Object.entries(right)) {
+    const existing = merged[key];
+    merged[key] = typeof value === "boolean"
+      ? Boolean(existing) || value
+      : Math.max(typeof existing === "number" ? existing : 0, value);
+  }
+  return merged;
+}
+
+function mergeText(left: string | undefined, right: string | undefined): string | undefined {
+  const values = [cleanText(left), cleanText(right)].filter(Boolean);
+  return values.length ? [...new Set(values)].join("\n") : undefined;
+}
+
+function mergeMonthlyDays(left: MonthlyDay, right: MonthlyDay): MonthlyDay {
+  return {
+    ...left,
+    ...right,
+    territories: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+      key,
+      Boolean(left.territories?.[key]) || Boolean(right.territories?.[key]),
+    ])),
+    commitments: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+      key,
+      mergeText(left.commitments?.[key], right.commitments?.[key]) ?? "",
+    ])),
+    basics: {
+      ars: Boolean(left.basics?.ars) || Boolean(right.basics?.ars),
+      ad: Boolean(left.basics?.ad) || Boolean(right.basics?.ad),
+      workout: Boolean(left.basics?.workout) || Boolean(right.basics?.workout),
+      cfo: Boolean(left.basics?.cfo) || Boolean(right.basics?.cfo),
+    },
+    wolf: Array.from(new Set([
+      ...(Array.isArray(left.wolf) ? left.wolf : left.wolf ? [left.wolf] : []),
+      ...(Array.isArray(right.wolf) ? right.wolf : right.wolf ? [right.wolf] : []),
+    ])),
+    trackers: mergeTrackerValues(left.trackers, right.trackers),
+    drinks: Math.max(left.drinks ?? 0, right.drinks ?? 0),
+    bagels: Math.max(left.bagels ?? 0, right.bagels ?? 0),
+    steps10k: Boolean(left.steps10k) || Boolean(right.steps10k),
+    coldPlunge: Boolean(left.coldPlunge) || Boolean(right.coldPlunge),
+    fasting: Boolean(left.fasting) || Boolean(right.fasting),
+    gratitude: mergeText(left.gratitude, right.gratitude),
+    wins: mergeText(left.wins, right.wins),
+    journal: mergeText(left.journal, right.journal),
+    reflection: mergeText(left.reflection, right.reflection),
+  };
+}
+
 export function periodDays(
   weeks: MonthlyWeek[],
   startsOn: string,
   endsOn: string,
   through = isoDate(new Date()),
 ): MonthlyEvidenceDay[] {
-  return weeks.flatMap((week) => {
+  const candidates = weeks.flatMap((week) => {
     const start = new Date(week.weekOf.includes("T") ? week.weekOf : `${week.weekOf}T12:00:00Z`);
     const startDayNumber = start.getUTCDay();
     return Object.entries(week.days).map(([day, data]) => {
@@ -198,10 +252,16 @@ export function periodDays(
       date.setUTCDate(date.getUTCDate() + ((DAY_NUMBERS[day] - startDayNumber + 7) % 7));
       return { date: isoDate(date), data };
     });
-  }).filter((day, index, days) =>
-    day.date >= startsOn && day.date <= endsOn && day.date <= through &&
-    days.findIndex((candidate) => candidate.date === day.date) === index
-  ).sort((a, b) => a.date.localeCompare(b.date));
+  }).filter((day) => day.date >= startsOn && day.date <= endsOn && day.date <= through);
+
+  const byDate = new Map<string, MonthlyDay>();
+  for (const candidate of candidates) {
+    const existing = byDate.get(candidate.date);
+    byDate.set(candidate.date, existing ? mergeMonthlyDays(existing, candidate.data) : candidate.data);
+  }
+  return [...byDate.entries()]
+    .map(([date, data]) => ({ date, data }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function weekStart(dateValue: string): string {
