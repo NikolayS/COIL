@@ -2089,9 +2089,21 @@ function ReviewTab({
             {monthlyEvidence.trackers.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
                 {monthlyEvidence.trackers.map((tracker) => (
-                  <div key={tracker.id} className="flex items-center justify-between rounded-xl bg-[--bg] px-3 py-2 text-sm">
-                    <span>{tracker.emoji} {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
-                  </div>
+                  <details key={tracker.id} className="rounded-xl bg-[--bg] px-3 py-2 text-sm">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                      <span>{tracker.emoji} {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
+                    </summary>
+                    <div className="mt-2 border-t border-[--border] pt-2 text-[11px] leading-5 text-[--text-faint]">
+                      {tracker.entries.length > 0
+                        ? tracker.entries.map((entry) => (
+                            <div key={entry.date} className="flex justify-between gap-2">
+                              <span>{new Date(`${entry.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                              <span className="font-mono">{typeof entry.value === "boolean" ? "yes" : entry.value}</span>
+                            </div>
+                          ))
+                        : <span>No recorded dates</span>}
+                    </div>
+                  </details>
                 ))}
               </div>
             )}

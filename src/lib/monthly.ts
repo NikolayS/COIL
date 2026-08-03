@@ -77,7 +77,13 @@ export interface MonthlyEvidence {
   commitmentsPlanned: Record<TerritoryKey, number>;
   commitmentsCompleted: Record<TerritoryKey, number>;
   basics: { ars: number; ad: number; cfo: number };
-  trackers: { id: string; label: string; emoji: string; summary: string }[];
+  trackers: {
+    id: string;
+    label: string;
+    emoji: string;
+    summary: string;
+    entries: { date: string; value: TrackerValue }[];
+  }[];
   weeklyTrend: { startsOn: string; trackedDays: number; score: number; possible: number }[];
   wins: { date: string; text: string }[];
   reflections: { date: string; text: string }[];
@@ -319,6 +325,10 @@ export function buildMonthlyEvidence(
     },
     trackers: enabledTrackers(trackerSettings).map((tracker) => {
       const values = tracked.map((day) => getTrackerValue(day.data as Record<string, unknown>, tracker));
+      const entries = tracked.flatMap((day, index) => {
+        const value = values[index];
+        return (typeof value === "boolean" ? value : value > 0) ? [{ date: day.date, value }] : [];
+      });
       const summary = tracker.type === "boolean"
         ? `${values.filter(Boolean).length}/${elapsedDays}`
         : tracker.type === "rating"
@@ -327,7 +337,7 @@ export function buildMonthlyEvidence(
               return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5` : "—";
             })()
           : trackerValueLabel(values.reduce<number>((sum, value) => sum + Number(value), 0), tracker);
-      return { id: tracker.id, label: tracker.label, emoji: tracker.emoji, summary };
+      return { id: tracker.id, label: tracker.label, emoji: tracker.emoji, summary, entries };
     }),
     weeklyTrend: [...groups.entries()].map(([startsOn, days]) => {
       const score = days.reduce((sum, day) =>

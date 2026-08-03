@@ -106,6 +106,9 @@ describe("monthly evidence", () => {
 
     expect(evidence.trackedDays).toBe(2);
     expect(evidence.trackers.find((tracker) => tracker.id === "gym")?.summary).toBe("1/31");
+    expect(evidence.trackers.find((tracker) => tracker.id === "gym")?.entries).toEqual([
+      { date: "2026-07-28", value: true },
+    ]);
   });
 
   it("merges evidence from overlapping weekly records for the same calendar day", () => {
@@ -128,6 +131,9 @@ describe("monthly evidence", () => {
 
     expect(evidence.trackedDays).toBe(1);
     expect(evidence.trackers.find((tracker) => tracker.id === "bagels")?.summary).toBe("2");
+    expect(evidence.trackers.find((tracker) => tracker.id === "bagels")?.entries).toEqual([
+      { date: "2026-07-06", value: 2 },
+    ]);
     expect(evidence.trackers.find((tracker) => tracker.id === "fasting")?.summary).toBe("1/31");
   });
 
