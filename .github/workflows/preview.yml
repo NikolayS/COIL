@@ -13,6 +13,36 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Diagnose July fasting storage
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          RESULT=$(ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no deploy@178.156.188.200 \
+            "docker exec -i supabase-db-1 psql -U postgres -d postgres -At" <<'SQL'
+          with day_rows as (
+            select day.value as data
+            from public.weeks week
+            cross join lateral jsonb_each(week.data->'days') day
+            where week.user_id = (select id from auth.users where email = 'nik@postgres.ai' limit 1)
+              and week.week_of >= date '2026-06-28'
+              and week.week_of <= date '2026-07-31'
+          )
+          select case
+            when coalesce(bool_or(data->>'fasting' = 'true' and data->'trackers'->>'fasting' = 'false'), false)
+              then 'LEGACY_TRUE_MASKED_BY_NESTED_FALSE'
+            when coalesce(bool_or(data->'trackers'->>'fasting' = 'true'), false)
+              then 'NESTED_TRUE_PRESENT'
+            when coalesce(bool_or(data->>'fasting' = 'true'), false)
+              then 'LEGACY_TRUE_PRESENT'
+            when coalesce(bool_or(data ? 'fasting' or data->'trackers' ? 'fasting'), false)
+              then 'ONLY_FALSE_VALUES_STORED'
+            else 'NO_FASTING_VALUES_STORED'
+          end
+          from day_rows;
+          SQL
+          )
+          echo "FASTING_STORAGE_RESULT=${RESULT}"
+
       - name: Build Docker image
         run: |
           SAFE_BRANCH=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
