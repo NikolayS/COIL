@@ -99,9 +99,8 @@ function isoDate(date: Date): string {
 }
 
 export function createDefaultCycle(today = new Date()): CycleData {
-  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 29);
+  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
 
   return {
     startsOn: isoDate(start),

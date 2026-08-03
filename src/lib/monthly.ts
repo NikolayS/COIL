@@ -121,6 +121,11 @@ export function monthRange(month: string): { startsOn: string; endsOn: string; l
   };
 }
 
+export function monthlyPlanStorageKey(month: string): string {
+  monthRange(month);
+  return `coil_monthly_plan_${month}`;
+}
+
 export function emptyMonthlyPlan(targetMonth: string): MonthlyPlan {
   return { targetMonth, responses: {}, territories: emptyTerritoryCommitments() };
 }
@@ -148,17 +153,14 @@ export function normalizeMonthlyPlan(value: unknown, targetMonth: string): Month
   };
 }
 
-export function mergeMonthlyPlanWithCycle(plan: MonthlyPlan, cycle: CycleData | null): MonthlyPlan {
+export function syncMonthlyPlanWithCycle(plan: MonthlyPlan, cycle: CycleData | null): MonthlyPlan {
   if (!cycle) return plan;
   return {
     ...plan,
-    responses: {
-      ...plan.responses,
-      mustWin: cleanText(plan.responses.mustWin) || cycle.mustWin,
-    },
+    responses: { ...plan.responses, mustWin: cycle.mustWin },
     territories: Object.fromEntries(TERRITORY_KEYS.map((key) => [key, {
-      outcome: cleanText(plan.territories[key].outcome) || cycle.territories[key].outcome,
-      keystoneHabit: cleanText(plan.territories[key].keystoneHabit) || cycle.territories[key].keystoneHabit,
+      outcome: cycle.territories[key].outcome,
+      keystoneHabit: cycle.territories[key].keystoneHabit,
     }])) as MonthlyPlan["territories"],
   };
 }

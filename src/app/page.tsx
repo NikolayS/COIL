@@ -14,11 +14,12 @@ import {
   encodeStoredReview,
   emptyMonthlyPlan,
   hasRecordedActivity,
-  mergeMonthlyPlanWithCycle,
   monthRange,
+  monthlyPlanStorageKey,
   monthlyReportText,
   nextMonthKey,
   periodDays as collectPeriodDays,
+  syncMonthlyPlanWithCycle,
   type MonthlyWeek,
 } from "@/lib/monthly";
 import { evidenceQueryRange, localDateInTimeZone, monthlyWeeksFromResult, previousMonthKeyInTimeZone } from "@/lib/monthly-data";
@@ -46,7 +47,7 @@ import type { User } from "@supabase/supabase-js";
 
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
-type TabKey = "today" | "week" | "cycle" | "review";
+type TabKey = "today" | "week" | "plan" | "review";
 type ReviewPeriod = "month" | "quarter" | "ytd" | "year" | "custom";
 
 interface DayData extends DailyIntentions {
@@ -1550,58 +1551,83 @@ function normalizeCycle(value: Partial<CycleData> | null | undefined): CycleData
   };
 }
 
-function CycleTab({ user }: { user: User | null }) {
-  const [cycle, setCycle] = useState<CycleData>(() => {
-    if (typeof window === "undefined" || user) return createDefaultCycle();
-    try {
-      const saved = localStorage.getItem("coil_active_cycle");
-      return normalizeCycle(saved ? JSON.parse(saved) as Partial<CycleData> : null);
-    } catch {
-      return createDefaultCycle();
-    }
-  });
-  const [cycleId, setCycleId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(Boolean(user));
+function emptyCycleForMonth(month: string): CycleData {
+  const range = monthRange(month);
+  return {
+    startsOn: range.startsOn,
+    endsOn: range.endsOn,
+    mustWin: "",
+    territories: createDefaultCycle(new Date(`${range.startsOn}T12:00:00Z`)).territories,
+  };
+}
+
+function loadLocalMonthlyPlan(month: string): CycleData | null {
+  const range = monthRange(month);
+  const saved = localStorage.getItem(monthlyPlanStorageKey(month));
+  const legacy = saved ? null : localStorage.getItem("coil_active_cycle");
+  if (!saved && !legacy) return null;
+  const candidate = normalizeCycle(JSON.parse(saved ?? legacy ?? "null") as Partial<CycleData>);
+  return candidate.startsOn === range.startsOn && candidate.endsOn === range.endsOn ? candidate : null;
+}
+
+function PlanTab({ user, timeZone }: { user: User | null; timeZone: string }) {
+  const currentMonth = localDateInTimeZone(new Date(), timeZone).slice(0, 7);
+  const [planMonth, setPlanMonth] = useState(currentMonth);
+  const [cycle, setCycle] = useState<CycleData>(() => emptyCycleForMonth(currentMonth));
+  const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    let cancelled = false;
+    const range = monthRange(planMonth);
+    const empty = emptyCycleForMonth(planMonth);
+    setLoading(true);
+    setSaveError(null);
+    setSaveStatus("idle");
+
+    if (!user) {
+      try {
+        setCycle(loadLocalMonthlyPlan(planMonth) ?? empty);
+      } catch {
+        setCycle(empty);
+      }
+      setLoading(false);
+      return;
+    }
 
     const supabase = createClient();
     supabase
       .from("cycles")
-      .select("id, starts_on, ends_on, must_win, territories")
+      .select("starts_on, ends_on, must_win, territories")
       .eq("user_id", user.id)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1)
+      .eq("starts_on", range.startsOn)
+      .eq("ends_on", range.endsOn)
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error) setSaveError("Cycle storage will be available after the database migration.");
+        if (cancelled) return;
+        if (error) {
+          setSaveError(error.message);
+          setCycle(empty);
+        }
         if (data) {
-          setCycleId(data.id);
           setCycle(normalizeCycle({
             startsOn: data.starts_on,
             endsOn: data.ends_on,
             mustWin: data.must_win,
             territories: data.territories,
           }));
-        }
+        } else if (!error) setCycle(empty);
         setLoading(false);
       });
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [planMonth, user]);
 
   const saveCycle = async () => {
-    if (!cycle.startsOn || !cycle.endsOn || cycle.endsOn < cycle.startsOn) {
-      setSaveStatus("error");
-      setSaveError("The cycle end date must be on or after its start date.");
-      return;
-    }
     setSaveStatus("saving");
     setSaveError(null);
     if (!user) {
-      localStorage.setItem("coil_active_cycle", JSON.stringify(cycle));
+      localStorage.setItem(monthlyPlanStorageKey(planMonth), JSON.stringify(cycle));
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 1500);
       return;
@@ -1617,57 +1643,47 @@ function CycleTab({ user }: { user: User | null }) {
         updated_at: new Date().toISOString(),
       };
     const supabase = createClient();
-    const query = cycleId
-      ? supabase.from("cycles").update(payload).eq("id", cycleId)
-      : supabase.from("cycles").insert(payload);
-    const { data: saved, error } = await query.select("id").single();
+    const { error } = await supabase
+      .from("cycles")
+      .upsert(payload, { onConflict: "user_id,starts_on,ends_on" });
 
     if (error) {
       setSaveStatus("error");
       setSaveError(error.message);
       return;
     }
-    setCycleId(saved.id);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 1500);
   };
 
   if (loading) {
-    return <p className="py-10 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading cycle…</p>;
+    return <p className="py-10 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading plan…</p>;
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">30-day cycle</p>
-        <p className="mt-1 text-sm text-[--text-faint]">Define the outcomes. Daily commitments are how you prove them.</p>
+        <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Monthly plan</p>
+        <p className="mt-1 text-sm text-[--text-faint]">The same plan created in Review. Edit it here during the month.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="text-xs text-[--text-muted]">
-          <span className="mb-1 block font-mono uppercase tracking-[0.1em]">Starts</span>
-          <input
-            type="date"
-            value={cycle.startsOn}
-            onChange={(event) => setCycle({ ...cycle, startsOn: event.target.value })}
-            className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
-          />
-        </label>
-        <label className="text-xs text-[--text-muted]">
-          <span className="mb-1 block font-mono uppercase tracking-[0.1em]">Ends</span>
-          <input
-            type="date"
-            value={cycle.endsOn}
-            min={cycle.startsOn}
-            onChange={(event) => setCycle({ ...cycle, endsOn: event.target.value })}
-            className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
-          />
-        </label>
-      </div>
+      <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+        Plan month
+        <input
+          aria-label="Plan month"
+          type="month"
+          min="2020-01"
+          max="2100-12"
+          value={planMonth}
+          onChange={(event) => { if (event.target.value) setPlanMonth(event.target.value); }}
+          className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text]"
+        />
+      </label>
+      <p className="text-xs text-[--text-faint]">{monthRange(planMonth).label} · {cycle.startsOn} – {cycle.endsOn}</p>
 
       <JournalField
-        label="The one thing I must accomplish"
-        placeholder="The must-win for this cycle..."
+        label="The one thing I must accomplish this month"
+        placeholder="The must-win for this month..."
         value={cycle.mustWin}
         onChange={(mustWin) => setCycle((current) => ({ ...current, mustWin }))}
       />
@@ -1723,11 +1739,11 @@ function CycleTab({ user }: { user: User | null }) {
       <button
         type="button"
         onClick={saveCycle}
-        disabled={saveStatus === "saving" || !cycle.startsOn || !cycle.endsOn || cycle.endsOn < cycle.startsOn}
+        disabled={saveStatus === "saving"}
         className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
         style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
       >
-        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : "Save cycle"}
+        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : "Save plan"}
       </button>
     </div>
   );
@@ -1817,18 +1833,13 @@ function ReviewTab({
               ? (parsed as ReviewData).responses
               : parsed as Record<string, string> });
           if (type === "month") {
-            const cycleValue = localStorage.getItem("coil_active_cycle");
-            if (cycleValue) {
-              const cycle = normalizeCycle(JSON.parse(cycleValue) as Partial<CycleData>);
-              if (cycle.startsOn <= period.endsOn && cycle.endsOn >= period.startsOn) setReviewCycle(cycle);
-              const targetRange = monthRange(targetMonth);
-              if (cycle.startsOn === targetRange.startsOn && cycle.endsOn === targetRange.endsOn) {
-                setReview((current) => ({
-                  ...current,
-                  plan: mergeMonthlyPlanWithCycle(current.plan ?? emptyMonthlyPlan(targetMonth), cycle),
-                }));
-              }
-            }
+            const reviewedPlan = loadLocalMonthlyPlan(safeMonth);
+            const targetPlan = loadLocalMonthlyPlan(targetMonth);
+            if (reviewedPlan) setReviewCycle(reviewedPlan);
+            if (targetPlan) setReview((current) => ({
+              ...current,
+              plan: syncMonthlyPlanWithCycle(current.plan ?? emptyMonthlyPlan(targetMonth), targetPlan),
+            }));
           }
         } catch {
           setReview(type === "month"
@@ -1893,7 +1904,7 @@ function ReviewTab({
       setReview(type === "month"
         ? (() => {
             const saved = savedReview ?? decodeStoredReview({}, targetMonth);
-            return { ...saved, plan: mergeMonthlyPlanWithCycle(saved.plan ?? emptyMonthlyPlan(targetMonth), targetCycle) };
+            return { ...saved, plan: syncMonthlyPlanWithCycle(saved.plan ?? emptyMonthlyPlan(targetMonth), targetCycle) };
           })()
         : { responses: savedResult.data?.responses && typeof savedResult.data.responses === "object"
           ? savedResult.data.responses as Record<string, string>
@@ -2000,43 +2011,13 @@ function ReviewTab({
     let cycleToApply: CycleData | null = null;
     if (applyPlan && type === "month" && review.plan) {
       const planRange = monthRange(review.plan.targetMonth);
-      let existingCycle: CycleData | null = null;
-      if (!user) {
-        try {
-          const value = localStorage.getItem("coil_active_cycle");
-          if (value) {
-            const candidate = normalizeCycle(JSON.parse(value) as Partial<CycleData>);
-            if (candidate.startsOn === planRange.startsOn && candidate.endsOn === planRange.endsOn) existingCycle = candidate;
-          }
-        } catch {}
-      } else {
-        const { data: existing, error: existingError } = await createClient().from("cycles")
-          .select("starts_on, ends_on, must_win, territories")
-          .eq("user_id", user.id)
-          .eq("starts_on", planRange.startsOn)
-          .eq("ends_on", planRange.endsOn)
-          .maybeSingle();
-        if (existingError) {
-          setSaveStatus("error");
-          setSaveError(existingError.message);
-          return;
-        }
-        if (existing) existingCycle = normalizeCycle({
-          startsOn: existing.starts_on,
-          endsOn: existing.ends_on,
-          mustWin: existing.must_win,
-          territories: existing.territories,
-        });
-      }
-      const mergedPlan = mergeMonthlyPlanWithCycle(review.plan, existingCycle);
-      reviewToSave = { ...review, plan: mergedPlan };
+      reviewToSave = review;
       cycleToApply = {
         startsOn: planRange.startsOn,
         endsOn: planRange.endsOn,
-        mustWin: mergedPlan.responses.mustWin ?? "",
-        territories: mergedPlan.territories,
+        mustWin: review.plan.responses.mustWin ?? "",
+        territories: review.plan.territories,
       };
-      setReview(reviewToSave);
     }
     const snapshot = type === "month" ? monthlyEvidence : {
       days: trackedPeriodDays.length, score: totalScore, possible: possibleScore, territories: territoryTotals,
@@ -2067,7 +2048,7 @@ function ReviewTab({
       const cycle = cycleToApply;
       const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
       if (!user) {
-        localStorage.setItem("coil_active_cycle", JSON.stringify(cycle));
+        localStorage.setItem(monthlyPlanStorageKey(reviewToSave.plan?.targetMonth ?? cycle.startsOn.slice(0, 7)), JSON.stringify(cycle));
       }
       const weekStartDate = new Date(data.weekOf);
       const weekEndDate = new Date(weekStartDate);
@@ -2380,7 +2361,7 @@ function ReviewTab({
 const TABS: { key: TabKey; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "week", label: "Week" },
-  { key: "cycle", label: "Cycle" },
+  { key: "plan", label: "Plan" },
   { key: "review", label: "Review" },
 ];
 
@@ -2390,8 +2371,8 @@ export default function CoilApp() {
   const requestedTab = initParams.get("tab");
   const initTab: TabKey = requestedTab === "week" || requestedTab === "weekly"
     ? "week"
-    : requestedTab === "cycle"
-      ? "cycle"
+    : requestedTab === "plan" || requestedTab === "cycle"
+      ? "plan"
       : requestedTab === "review" || requestedTab === "export" || requestedTab === "past"
         ? "review"
         : "today";
@@ -2778,8 +2759,8 @@ export default function CoilApp() {
           {activeTab === "week" && (
             <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} />
           )}
-          {activeTab === "cycle" && (
-            <CycleTab user={user} />
+          {activeTab === "plan" && (
+            <PlanTab user={user} timeZone={timeZone} />
           )}
           {activeTab === "review" && (
             <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} />

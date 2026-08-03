@@ -6,9 +6,10 @@ import {
   decodeStoredReview,
   encodeStoredReview,
   emptyMonthlyPlan,
-  mergeMonthlyPlanWithCycle,
+  monthlyPlanStorageKey,
   monthRange,
   nextMonthKey,
+  syncMonthlyPlanWithCycle,
   type MonthlyWeek,
 } from "@/lib/monthly";
 
@@ -24,6 +25,11 @@ function day(overrides: Record<string, unknown> = {}) {
 }
 
 describe("monthly review model", () => {
+  it("uses one month-scoped storage key for both Review → Plan and the Plan tab", () => {
+    expect(monthlyPlanStorageKey("2026-08")).toBe("coil_monthly_plan_2026-08");
+    expect(() => monthlyPlanStorageKey("2026-13")).toThrow("Invalid month");
+  });
+
   it("plans the month after the reviewed month across year boundaries", () => {
     expect(nextMonthKey("2026-07")).toBe("2026-08");
     expect(nextMonthKey("2026-12")).toBe("2027-01");
@@ -53,23 +59,24 @@ describe("monthly review model", () => {
     expect(review.plan?.targetMonth).toBe("2026-08");
   });
 
-  it("preserves existing cycle goals when the monthly plan leaves fields blank", () => {
+  it("treats the month plan record as authoritative when reopening Review → Plan", () => {
     const plan = emptyMonthlyPlan("2026-08");
-    plan.territories.business.outcome = "New business outcome";
-    const existing = {
+    plan.responses = { mustWin: "Stale review value", learning: "Read Designing Data-Intensive Applications" };
+    plan.territories.business = { outcome: "Stale outcome", keystoneHabit: "Stale habit" };
+    const cycle = {
       startsOn: "2026-08-01",
       endsOn: "2026-08-31",
-      mustWin: "Existing must-win",
-      territories: emptyMonthlyPlan("2026-08").territories,
+      mustWin: "Edited in Plan",
+      territories: {
+        ...plan.territories,
+        business: { outcome: "", keystoneHabit: "Write daily" },
+      },
     };
-    existing.territories.business.outcome = "Old business outcome";
-    existing.territories.business.keystoneHabit = "Daily sales call";
-    const merged = mergeMonthlyPlanWithCycle(plan, existing);
-    expect(merged.responses.mustWin).toBe("Existing must-win");
-    expect(merged.territories.business).toEqual({
-      outcome: "New business outcome",
-      keystoneHabit: "Daily sales call",
-    });
+
+    const synced = syncMonthlyPlanWithCycle(plan, cycle);
+    expect(synced.responses.mustWin).toBe("Edited in Plan");
+    expect(synced.responses.learning).toBe("Read Designing Data-Intensive Applications");
+    expect(synced.territories.business).toEqual({ outcome: "", keystoneHabit: "Write daily" });
   });
 });
 

@@ -32,11 +32,11 @@ describe("daily Plan/Close phase", () => {
 });
 
 describe("createDefaultCycle", () => {
-  it("creates a 30-day inclusive cycle", () => {
+  it("creates the containing calendar month instead of an arbitrary 30-day range", () => {
     const cycle = createDefaultCycle(new Date("2026-07-31T12:00:00Z"));
 
-    expect(cycle.startsOn).toBe("2026-07-31");
-    expect(cycle.endsOn).toBe("2026-08-29");
+    expect(cycle.startsOn).toBe("2026-07-01");
+    expect(cycle.endsOn).toBe("2026-07-31");
   });
 
   it("creates outcome and keystone habit fields for all territories", () => {

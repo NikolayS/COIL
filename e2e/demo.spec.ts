@@ -167,7 +167,7 @@ test.describe("Demo mode — home page", () => {
   test("past weeks open the Week tab on Review by default", async ({ page }) => {
     test.skip(RUNS_AGAINST_PRODUCTION, "Past-week defaults are verified against the PR preview until merged");
     await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
-    await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Plan", exact: true }).last()).toHaveAttribute("aria-pressed", "true");
 
     await page.getByRole("button", { name: "Previous week" }).click();
     await expect(page.getByRole("button", { name: "Review", exact: true }).last()).toHaveAttribute("aria-pressed", "true");
@@ -267,13 +267,31 @@ test.describe("Demo mode — home page", () => {
 
     const stored = await page.evaluate(() => ({
       review: JSON.parse(localStorage.getItem("coil_review_month_2026-07") ?? "null"),
-      cycle: JSON.parse(localStorage.getItem("coil_active_cycle") ?? "null"),
+      plan: JSON.parse(localStorage.getItem("coil_monthly_plan_2026-08") ?? "null"),
     }));
     expect(stored.review.__plan.targetMonth).toBe("2026-08");
     expect(stored.review.__plan.responses.mustWin).toBe("Launch August release");
-    expect(stored.cycle.startsOn).toBe("2026-08-01");
-    expect(stored.cycle.endsOn).toBe("2026-08-31");
-    expect(stored.cycle.territories.business.outcome).toBe("Ship the release");
+    expect(stored.plan.startsOn).toBe("2026-08-01");
+    expect(stored.plan.endsOn).toBe("2026-08-31");
+    expect(stored.plan.territories.business.outcome).toBe("Ship the release");
+
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await expect(page.getByLabel("Plan month")).toHaveValue("2026-08");
+    await expect(page.getByText("Monthly plan", { exact: true })).toBeVisible();
+    await expect(page.getByText("Launch August release", { exact: true })).toBeVisible();
+    await expect(page.locator('input[placeholder="Outcome"]').last()).toHaveValue("Ship the release");
+
+    await page.locator('textarea[placeholder="The must-win for this month..."]').fill("Edited from Plan tab");
+    await page.locator('input[placeholder="Outcome"]').last().fill("Updated release outcome");
+    await page.getByRole("button", { name: "Save plan" }).click();
+    await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Review", exact: true }).first().click();
+    await page.getByRole("button", { name: "Plan next month" }).click();
+    await expect(page.getByText("What is the one thing I must accomplish this month?", { exact: true })
+      .locator("..")
+      .getByRole("textbox")).toHaveValue("Edited from Plan tab");
+    await expect(page.locator('input[placeholder="Outcome / priority"]').last()).toHaveValue("Updated release outcome");
   });
 });
 
