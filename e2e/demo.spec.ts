@@ -11,7 +11,22 @@
  *  - /settings redirects unauthenticated users to /login
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+const RUNS_AGAINST_PRODUCTION = new URL(
+  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+).hostname === "coil.5am.team";
+
+async function switchToCloseWhenAvailable(page: Page) {
+  const close = page.getByRole("button", { name: "Close", exact: true });
+  if (await close.count()) await close.click();
+}
+
+function firstTerritoryCompletion(page: Page) {
+  return page.getByRole("button", { name: "Complete Self commitment" })
+    .or(page.locator("button.territory-toggle").first())
+    .first();
+}
 
 test.describe("Demo mode — home page", () => {
   test.beforeEach(async ({ page, context, baseURL }) => {
@@ -61,9 +76,9 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("checking a territory shows the save status pill ('saving' or 'saved')", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await switchToCloseWhenAvailable(page);
     // Click the first territory toggle
-    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
+    const firstTerritory = firstTerritoryCompletion(page);
     await expect(firstTerritory).toBeVisible();
     await firstTerritory.click();
 
@@ -75,8 +90,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("save status pill shows 'saved' after checking territory (demo = localStorage)", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
-    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
+    await switchToCloseWhenAvailable(page);
+    const firstTerritory = firstTerritoryCompletion(page);
     await firstTerritory.click();
 
     // Demo mode writes to localStorage synchronously → jumps straight to 'saved'
@@ -84,8 +99,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("save status pill disappears after a moment", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
-    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
+    await switchToCloseWhenAvailable(page);
+    const firstTerritory = firstTerritoryCompletion(page);
     await firstTerritory.click();
 
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
@@ -95,12 +110,12 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("score increments when territory is checked", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await switchToCloseWhenAvailable(page);
     // Initial score should be 0 for a fresh demo session
     const scoreEl = page.locator("text=/^\\d+$/").first();
     const initialScore = parseInt(await scoreEl.textContent() ?? "0", 10);
 
-    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
+    const firstTerritory = firstTerritoryCompletion(page);
     await firstTerritory.click();
 
     // Wait for save to settle
@@ -112,8 +127,8 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("score persists after page reload (localStorage)", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
-    const firstTerritory = page.getByRole("button", { name: "Complete Self commitment" });
+    await switchToCloseWhenAvailable(page);
+    const firstTerritory = firstTerritoryCompletion(page);
     await firstTerritory.click();
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
 
@@ -142,24 +157,26 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("tab navigation works — can switch to Week review", async ({ page }) => {
-    await page.getByRole("button", { name: "Week", exact: true }).click();
-    await page.getByRole("button", { name: "Review", exact: true }).last().click();
+    await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
+    if (!await page.getByText("Territory Breakdown").isVisible()) {
+      await page.getByRole("button", { name: "Review", exact: true }).last().click();
+    }
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
   });
 
   test("tab navigation works — Review shows monthly report actions", async ({ page }) => {
-    await page.getByRole("button", { name: "Review", exact: true }).click();
-    await expect(page.getByRole("button", { name: /copy report/i })).toBeVisible();
+    await page.getByRole("button", { name: /^(Review|Export)$/ }).click();
+    await expect(page.getByRole("button", { name: /copy (report|for ai chat)/i })).toBeVisible();
   });
 
   test("Review: SQL Dump button is NOT visible in demo mode (no user)", async ({ page }) => {
-    await page.getByRole("button", { name: "Review", exact: true }).click();
+    await page.getByRole("button", { name: /^(Review|Export)$/ }).click();
     // Download SQL Dump button only shows for authenticated users
     await expect(page.getByRole("button", { name: /download sql dump/i })).not.toBeVisible();
   });
 
   test("Wolf check buttons are visible and toggleable", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await switchToCloseWhenAvailable(page);
     await expect(page.getByText("Wise")).toBeVisible();
     await expect(page.getByText("Open")).toBeVisible();
     await expect(page.getByText("Loving")).toBeVisible();
@@ -171,12 +188,13 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("Drink counter increments and saves", async ({ page }) => {
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await switchToCloseWhenAvailable(page);
     await page.getByRole("button", { name: "Increase 🥃 Drinks Today" }).click();
     await expect(page.getByText(/✓ saved/)).toBeVisible({ timeout: 3_000 });
   });
 
   test("July review works without pre-existing goals", async ({ page }) => {
+    test.skip(RUNS_AGAINST_PRODUCTION, "Monthly review is verified against the PR preview until merged");
     await page.getByRole("button", { name: "Review" }).click();
     await expect(page.getByLabel("Review month")).toHaveValue("2026-07");
 
@@ -186,6 +204,7 @@ test.describe("Demo mode — home page", () => {
   });
 
   test("July review creates and applies an August plan", async ({ page }) => {
+    test.skip(RUNS_AGAINST_PRODUCTION, "Monthly review is verified against the PR preview until merged");
     await page.getByRole("button", { name: "Review" }).click();
     await expect(page.getByLabel("Review month")).toHaveValue("2026-07");
     await page.getByRole("button", { name: "Plan next month" }).click();
