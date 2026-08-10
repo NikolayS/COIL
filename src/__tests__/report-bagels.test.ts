@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateEmailHtml, generatePlainReport, generatePlainReportHtml, generateReport, type WeekData } from "@/lib/report";
 import { PDFDocument } from "pdf-lib";
-import { generateConsolidatedReportPdf, generateReportPdf } from "@/lib/generatePdf";
+import { generateConsolidatedReportPdf, generateReportPdf, wrapPdfText } from "@/lib/generatePdf";
 import { DEFAULT_TRACKERS, type TrackerSettings } from "@/lib/tracking";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
@@ -33,6 +33,13 @@ function makeWeek(): WeekData {
 }
 
 describe("bagel tracking in report outputs", () => {
+  it("wraps PDF text without passing embedded newlines to pdf-lib", () => {
+    const lines = wrapPdfText("first line\nsecond line with words\n\nlast", 12, (value) => value.length);
+
+    expect(lines).toEqual(["first line", "second line", "with words", "", "last"]);
+    expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+  });
+
   it("includes both drinks and bagels in AI chat copy output", () => {
     const report = generateReport(makeWeek());
     expect(report).toContain("## Drinks Tracking 🥃");

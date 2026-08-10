@@ -10,6 +10,36 @@ import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, type Tracke
 import { MONTHLY_PLAN_PROMPTS, MONTHLY_REVIEW_PROMPTS, monthRange, type MonthlyEvidence } from "./monthly";
 import { TERRITORY_KEYS, type CycleData, type ReviewData } from "./intentional";
 
+export function wrapPdfText(
+  text: string,
+  maxWidth: number,
+  measure: (value: string) => number,
+): string[] {
+  const wrapped: string[] = [];
+
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      wrapped.push("");
+      continue;
+    }
+
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && measure(candidate) > maxWidth) {
+        wrapped.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) wrapped.push(line);
+  }
+
+  return wrapped;
+}
+
 export function monthlyPdfAnswerKeepTogetherHeight(promptLineCount: number, answerLineCount: number): number {
   return (Math.max(1, promptLineCount) + Math.min(2, Math.max(1, answerLineCount))) * 13 + 12;
 }
@@ -104,20 +134,7 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
   }
 
   function wrapText(str: string, maxWidth: number, size: number): string[] {
-    const words = str.split(" ");
-    const lines: string[] = [];
-    let line = "";
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (fontRegular.widthOfTextAtSize(test, size) > maxWidth && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) lines.push(line);
-    return lines;
+    return wrapPdfText(str, maxWidth, (value) => fontRegular.widthOfTextAtSize(value, size));
   }
 
   // ── HEADER ──
@@ -308,6 +325,7 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
       checkY(13);
       const reflLines = wrapText(`Better: ${d.reflection}`, COL_W - 12, 9);
       for (const line of reflLines) {
+        checkY(12);
         drawText(line, MARGIN + 10, y, { italic: true, size: 9, color: COLORS.mid });
         y -= 12;
       }
