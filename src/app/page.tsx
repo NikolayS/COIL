@@ -1,21 +1,56 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, Sun, Moon, Monitor, LogOut, Settings, Download, Mail } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { generateReport, generatePlainReport, generatePlainReportHtml } from "@/lib/report";
+import { nullableDataOrThrow } from "@/lib/supabase-result";
+import { generateReport, generatePlainReportHtml } from "@/lib/report";
 import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "@/lib/tracking";
+import {
+  MONTHLY_PLAN_PROMPTS,
+  MONTHLY_REVIEW_PROMPTS,
+  buildMonthlyEvidence,
+  decodeStoredReview,
+  encodeStoredReview,
+  emptyMonthlyPlan,
+  hasRecordedActivity,
+  monthRange,
+  monthlyPlanStorageKey,
+  monthlyReportText,
+  nextMonthKey,
+  periodDays as collectPeriodDays,
+  syncMonthlyPlanWithCycle,
+  type MonthlyWeek,
+} from "@/lib/monthly";
+import { evidenceQueryRange, localDateInTimeZone, monthlyWeeksFromResult, previousMonthKeyInTimeZone } from "@/lib/monthly-data";
+import { defaultViewForTab, parseTab, resolveView, type AppView, type TabKey } from "@/lib/navigation";
+import {
+  TERRITORY_KEYS,
+  createDefaultCycle,
+  defaultDailyPhase,
+  getReviewPeriod,
+  isDailyPhaseLocked,
+  migrateDayIntentions,
+  migrateWeeklyIntentions,
+  seedWeeklyPrioritiesFromCycle,
+  type CycleData,
+  type DailyPhase,
+  type DailyIntentions,
+  type MonthlyPlan,
+  type ReviewData,
+  type ReviewType,
+  type TerritoryKey,
+  type WeeklyIntentions,
+} from "@/lib/intentional";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type TerritoryKey = "self" | "health" | "relationships" | "wealth" | "business";
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
-type TabKey = "daily" | "weekly" | "export" | "past";
 type ReviewPeriod = "month" | "quarter" | "ytd" | "year" | "custom";
 
-interface DayData {
+interface DayData extends DailyIntentions {
   territories: Record<TerritoryKey, boolean>;
   wolf: WolfModes;
   drinks: number;
@@ -33,7 +68,7 @@ interface DayData {
 interface WeekData {
   weekOf: string; // ISO date string for Monday
   days: Record<string, DayData>; // key: "mon" | "tue" etc.
-  weekly: {
+  weekly: WeeklyIntentions & {
     wins: string;
     gratitude: string;
     biggestWin: string;
@@ -58,8 +93,8 @@ interface ArchivedWeek {
 const TERRITORIES: { key: TerritoryKey; label: string; color: string; textColor: string }[] = [
   { key: "self", label: "Self", color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
   { key: "health", label: "Health", color: "#c85555", textColor: "text-[#c85555]" },
-  { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
   { key: "wealth", label: "Wealth", color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
+  { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
   { key: "business", label: "Business", color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
 ];
 
@@ -145,8 +180,10 @@ function getTodayKey(): string {
 }
 
 function emptyDayData(): DayData {
+  const intentions = migrateDayIntentions({});
   return {
-    territories: { self: false, health: false, relationships: false, wealth: false, business: false },
+    ...intentions,
+    territories: { self: false, health: false, wealth: false, relationships: false, business: false },
     wolf: [],
     drinks: 0,
     bagels: 0,
@@ -162,10 +199,12 @@ function emptyDayData(): DayData {
 }
 
 function emptyWeekData(monday: Date): WeekData {
+  const weeklyIntentions = migrateWeeklyIntentions({});
   return {
     weekOf: monday.toISOString(),
     days: Object.fromEntries(DAYS.map((d) => [d, emptyDayData()])),
     weekly: {
+      ...weeklyIntentions,
       wins: "", gratitude: "", biggestWin: "", lessons: "", focusAchieved: "",
       focusNext: "", stretchNext: "", onTrack: "", cupOverflowing: "", improve: "",
     },
@@ -199,6 +238,7 @@ function migrateWeekData(data: WeekData): WeekData {
       k,
       {
         ...d,
+        ...migrateDayIntentions(d as unknown as Record<string, unknown>),
         wolf: Array.isArray(d.wolf) ? d.wolf : d.wolf ? [d.wolf as unknown as WolfMode] : [],
         bagels: d.bagels ?? 0,
         steps10k: d.steps10k ?? false,
@@ -211,7 +251,11 @@ function migrateWeekData(data: WeekData): WeekData {
     ])
   );
   // Backfill new weekly field
-  const weekly = { ...data.weekly, biggestWin: data.weekly.biggestWin ?? "" };
+  const weekly = {
+    ...data.weekly,
+    ...migrateWeeklyIntentions(data.weekly as unknown as Record<string, unknown>),
+    biggestWin: data.weekly.biggestWin ?? "",
+  };
   return { ...data, days, weekly };
 }
 
@@ -267,6 +311,20 @@ async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: Ab
   return error ? error.message : null;
 }
 
+const weekSaveQueues = new Map<string, Promise<string | null>>();
+
+function queueWeekSave(userId: string, data: WeekData, isPastWeek: boolean): Promise<string | null> {
+  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  const key = `${userId}:${weekOf}`;
+  const previous = weekSaveQueues.get(key) ?? Promise.resolve(null);
+  const next = previous.catch(() => null).then(() => syncCurrentToSupabase(userId, data, undefined, isPastWeek));
+  weekSaveQueues.set(key, next);
+  void next.finally(() => {
+    if (weekSaveQueues.get(key) === next) weekSaveQueues.delete(key);
+  });
+  return next;
+}
+
 function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "monday"): Date {
   const d = getWeekStart(new Date(), weekStart);
   d.setDate(d.getDate() + offset * 7);
@@ -276,25 +334,26 @@ function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "mo
 async function fetchCurrentFromSupabase(userId: string, offset = 0, weekStart: "monday" | "sunday" = "monday"): Promise<WeekData | null> {
   const supabase = createClient();
   const monday = getMondayForOffset(offset, weekStart).toISOString().slice(0, 10);
-  const { data } = await supabase
+  let query = supabase
     .from("weeks")
     .select("data")
     .eq("user_id", userId)
-    .eq("week_of", monday)
-    .eq("archived", false)
-    .maybeSingle();
+    .eq("week_of", monday);
+  if (offset === 0) query = query.eq("archived", false);
+  const result = await query.maybeSingle();
+  const data = nullableDataOrThrow(result);
   return data?.data ? migrateWeekData(data.data as WeekData) : null;
 }
 
-async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]> {
+async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "sunday" = "monday"): Promise<ArchivedWeek[]> {
   const supabase = createClient();
-  const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
+  const currentWeekStart = getWeekStart(new Date(), weekStart).toISOString().slice(0, 10);
   // Show ALL past weeks (not just archived ones) — any week before this week
   const { data } = await supabase
     .from("weeks")
     .select("week_of, data, updated_at")
     .eq("user_id", userId)
-    .lt("week_of", currentMonday)
+    .lt("week_of", currentWeekStart)
     .order("week_of", { ascending: false });
   if (!data) return [];
   return data.map((row) => ({
@@ -302,6 +361,37 @@ async function fetchArchiveFromSupabase(userId: string): Promise<ArchivedWeek[]>
     data: row.data as WeekData,
     archivedAt: row.updated_at,
   }));
+}
+
+async function fetchCycleForWeek(userId: string, weekOf: string): Promise<CycleData | null> {
+  const end = new Date(`${weekOf}T12:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const { data } = await createClient()
+    .from("cycles")
+    .select("starts_on, ends_on, must_win, territories")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .lte("starts_on", isoDate(end))
+    .gte("ends_on", weekOf)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? normalizeCycle({
+    startsOn: data.starts_on,
+    endsOn: data.ends_on,
+    mustWin: data.must_win,
+    territories: data.territories,
+  }) : null;
+}
+
+function applyCycleToWeek(data: WeekData, cycle: CycleData | null): WeekData {
+  return {
+    ...data,
+    weekly: {
+      ...data.weekly,
+      priorities: seedWeeklyPrioritiesFromCycle(data.weekly.priorities, cycle),
+    },
+  };
 }
 
 async function archiveInSupabase(userId: string, data: WeekData) {
@@ -367,41 +457,109 @@ async function downloadSqlDump(user: User, supabase: ReturnType<typeof createCli
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function TerritoryRow({
+function PhaseSwitch<T extends string>({
+  value,
+  options,
+  onChange,
+  prominent = false,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  prominent?: boolean;
+}) {
+  return (
+    <div
+      className={`grid gap-1 rounded-xl bg-[--bg-card] ${prominent ? "border-2 p-1.5" : "border p-1"}`}
+      style={{
+        gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
+        borderColor: prominent ? "var(--gold-border)" : "var(--border)",
+      }}
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={`rounded-lg px-3 font-mono uppercase tracking-[0.12em] transition-all ${prominent ? "py-3 text-sm font-bold" : "py-2 text-xs"}`}
+            style={{
+              color: active ? (prominent ? "var(--bg)" : "var(--gold)") : "var(--text-dim)",
+              backgroundColor: active ? (prominent ? "var(--gold)" : "var(--gold-bg)") : "transparent",
+              boxShadow: active && prominent ? "0 2px 8px color-mix(in srgb, var(--gold) 30%, transparent)" : "none",
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CommitmentRow({
   territory,
-  checked,
+  value,
+  placeholder,
+  completed,
+  showCompletion,
+  onChange,
   onToggle,
 }: {
   territory: typeof TERRITORIES[0];
-  checked: boolean;
+  value: string;
+  placeholder?: string;
+  completed: boolean;
+  showCompletion: boolean;
+  onChange: (value: string) => void;
   onToggle: () => void;
 }) {
   return (
-    <button
-      onClick={onToggle}
-      className="territory-toggle flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
-      style={{ borderColor: checked ? territory.color + "60" : undefined }}
+    <div
+      className="rounded-xl border bg-[--bg-card] px-3 py-3"
+      style={{ borderColor: completed ? territory.color + "70" : "var(--border)" }}
     >
-      <div className="flex items-center gap-3">
-        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: territory.color }} />
-        <span className="text-[15px] font-medium tracking-wide">{territory.label}</span>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: territory.color }} />
+        <span className="text-xs font-mono uppercase tracking-[0.12em]" style={{ color: territory.color }}>
+          {territory.label}
+        </span>
       </div>
-      <div
-        className="w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200"
-        style={{
-          borderColor: territory.color,
-          backgroundColor: checked ? territory.color : "transparent",
-        }}
-      >
-        {checked && (
-          <svg className="check-icon" width="12" height="9" viewBox="0 0 12 9" fill="none">
-            <path d="M1 4L4.5 7.5L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder || `One commitment for ${territory.label.toLowerCase()}…`}
+          maxLength={180}
+          className="min-w-0 flex-1 rounded-lg border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text] placeholder-[--text-faint] focus:border-[--gold-border] focus:outline-none"
+        />
+        {showCompletion && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={`${completed ? "Undo" : "Complete"} ${territory.label} commitment`}
+            aria-pressed={completed}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border-2 transition-all active:scale-95"
+            style={{
+              borderColor: territory.color,
+              backgroundColor: completed ? territory.color : "transparent",
+            }}
+          >
+            {completed && <Check size={16} color="#fff" />}
+          </button>
         )}
       </div>
-    </button>
+    </div>
   );
 }
+
+const BASIC_ITEMS: { key: keyof DailyIntentions["basics"]; label: string }[] = [
+  { key: "ars", label: "Alpha Rise & Shine" },
+  { key: "ad", label: "Alpha Decompression" },
+  { key: "cfo", label: "Be the CFO" },
+];
 
 function WolfCheck({ value, onChange }: { value: WolfModes; onChange: (v: WolfModes) => void }) {
   const toggle = (key: WolfMode) => {
@@ -553,8 +711,11 @@ function JournalField({
   // local edits propagate to parent via debounced onChange.
   const [local, setLocal] = useState(value);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   // Sync from parent when value changes externally (day switch, data load)
   useEffect(() => {
@@ -591,11 +752,14 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; phase: DailyPhase; onPhaseChange: (phase: DailyPhase) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
-  // When viewing a past week, default to Sunday (last day); otherwise today
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
   const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setActiveDay(weekOffset < 0 ? "sun" : todayKey);
+  }, [weekOffset, todayKey]);
 
   const dayData = data.days[activeDay] ?? emptyDayData();
   const activeTrackers = enabledTrackers(trackerSettings);
@@ -618,7 +782,16 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
 
   const activeDayAgo = daysAgo(activeDay);
   const isFuture = activeDayAgo < 0;
-  const isLocked = isFuture || (activeDayAgo >= 2 && !editUnlocked[`${weekOffset}:${activeDay}`]);
+  const isUnlocked = Boolean(editUnlocked[`${weekOffset}:${activeDay}`]);
+  const isLocked = isDailyPhaseLocked(activeDayAgo, phase, isUnlocked);
+  const canUnlock = activeDayAgo > 0 && !isUnlocked;
+  const orderedDays = weekStart === "sunday"
+    ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+    : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const previousDayIndex = orderedDays.indexOf(activeDay) - 1;
+  const carriedPriority = previousDayIndex >= 0
+    ? data.days[orderedDays[previousDayIndex]]?.tomorrowPriority?.trim()
+    : "";
 
   const unlockDay = () => {
     setEditUnlocked(prev => ({ ...prev, [`${weekOffset}:${activeDay}`]: true }));
@@ -640,9 +813,25 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   };
 
   const dayScore = Object.values(dayData.territories).filter(Boolean).length;
+  const updateCommitment = (key: TerritoryKey, value: string) => {
+    updateDay({ commitments: { ...dayData.commitments, [key]: value } });
+  };
+  const toggleBasic = (key: keyof DailyIntentions["basics"]) => {
+    updateDay({ basics: { ...dayData.basics, [key]: !dayData.basics[key] } });
+  };
 
   return (
     <div className="space-y-5">
+      <PhaseSwitch
+        value={phase}
+        options={[
+          { value: "plan", label: "Plan" },
+          { value: "close", label: "Close" },
+        ]}
+        onChange={onPhaseChange}
+        prominent
+      />
+
       {/* Day picker */}
       <div className="grid grid-cols-7 gap-1.5">
         {(weekStart === "sunday" ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const : DAYS).map((day) => {
@@ -652,7 +841,10 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
           return (
             <button
               key={day}
-              onClick={() => setActiveDay(day)}
+              onClick={() => {
+                setActiveDay(day);
+                onPhaseChange(defaultDailyPhase(daysAgo(day)));
+              }}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
                 backgroundColor: isActive ? "var(--gold-bg)" : "transparent",
@@ -680,7 +872,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
       {/* Day score */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">
-          Territories — {DAY_LABELS[activeDay]}
+          {phase === "plan" ? "Today's commitments" : "Commitment score"} — {DAY_LABELS[activeDay]}
         </p>
         <span className="font-mono text-sm" style={{color:"var(--gold)"}}>{dayScore}/5</span>
       </div>
@@ -690,9 +882,13 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
         <div className="flex items-center justify-between rounded-xl px-4 py-3 border"
           style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border)" }}>
           <span className="text-xs font-mono text-[--text-muted]">
-            {isFuture ? "🔒 This day hasn\u2019t happened yet" : `🔒 ${activeDayAgo} days ago \u2014 read-only`}
+            {isFuture
+              ? "🔒 Plan now; close this day after it happens"
+              : phase === "plan"
+                ? `🔒 Past plan — ${activeDayAgo} ${activeDayAgo === 1 ? "day" : "days"} ago`
+                : `🔒 ${activeDayAgo} days ago — read-only`}
           </span>
-          {!isFuture && (
+          {canUnlock && (
             <button
               onClick={unlockDay}
               className="text-xs font-mono px-3 py-1 rounded-lg transition-colors"
@@ -704,117 +900,222 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
         </div>
       )}
 
-      {/* Territories */}
-      <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
-        {TERRITORIES.map((t) => (
-          <TerritoryRow
-            key={t.key}
-            territory={t}
-            checked={dayData.territories[t.key]}
-            onToggle={() => toggleTerritory(t.key)}
-          />
-        ))}
-      </div>
-
-      {/* Wolf check */}
-      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
-        <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
-      </div>
-
-      {/* Trackers */}
-      <div className={`space-y-2 ${isLocked ? "pointer-events-none opacity-50" : ""}`}>
-        <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">Trackers</p>
-        {activeTrackers.map((tracker) => {
-          const value = getTrackerValue(dayData as unknown as Record<string, unknown>, tracker);
-          const setValue = (next: TrackerValue) => updateDay({ trackers: { ...dayData.trackers, [tracker.id]: next } });
-          if (tracker.type === "boolean") {
-            return (
-              <BooleanTrackerRow
-                key={tracker.id}
-                label={tracker.label}
-                emoji={tracker.emoji}
-                checked={Boolean(value)}
-                onToggle={() => setValue(!value)}
-              />
-            );
-          }
-          if (tracker.type === "rating") {
-            return (
-              <RatingTrackerRow
-                key={tracker.id}
-                label={tracker.label}
-                emoji={tracker.emoji}
-                value={Number(value)}
-                onChange={setValue}
-              />
-            );
-          }
-          return (
-            <CountCounter
-              key={tracker.id}
-              label={`${tracker.emoji} ${tracker.label} Today`}
-              value={Number(value)}
-              weeklyTotal={weeklyTrackerTotal(tracker)}
-              onChange={setValue}
-              weeklyNote={(total) => <>Weekly: {total}{tracker.unit ? ` ${tracker.unit}` : ""}</>}
+      {phase === "plan" ? (
+        <fieldset disabled={isLocked} className={`space-y-3 ${isLocked ? "opacity-50" : ""}`}>
+          {carriedPriority && (
+            <div className="rounded-xl border border-[--gold-border] bg-[--gold-bg] px-4 py-3">
+              <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-[--gold]">Carried from yesterday</p>
+              <p className="mt-1 text-sm text-[--text]">{carriedPriority}</p>
+            </div>
+          )}
+          {TERRITORIES.map((territory) => (
+            <CommitmentRow
+              key={territory.key}
+              territory={territory}
+              value={dayData.commitments[territory.key]}
+              placeholder={data.weekly.priorities[territory.key] || undefined}
+              completed={dayData.territories[territory.key]}
+              showCompletion={false}
+              onChange={(value) => updateCommitment(territory.key, value)}
+              onToggle={() => toggleTerritory(territory.key)}
             />
-          );
-        })}
-      </div>
+          ))}
+          <p className="text-xs leading-5 text-[--text-faint]">
+            Weekly priorities appear as suggestions. Write a concrete action you can finish today.
+          </p>
+        </fieldset>
+      ) : (
+        <fieldset disabled={isLocked} className={`space-y-6 ${isLocked ? "opacity-50" : ""}`}>
+          <div className="space-y-3">
+            {TERRITORIES.map((territory) => (
+              <CommitmentRow
+                key={territory.key}
+                territory={territory}
+                value={dayData.commitments[territory.key]}
+                placeholder={data.weekly.priorities[territory.key] || undefined}
+                completed={dayData.territories[territory.key]}
+                showCompletion
+                onChange={(value) => updateCommitment(territory.key, value)}
+                onToggle={() => toggleTerritory(territory.key)}
+              />
+            ))}
+          </div>
 
-      {/* Gratitude & Wins */}
-      <div className={isLocked ? "pointer-events-none opacity-50" : ""}>
-        <JournalField
-          label="Gratitude"
-          placeholder="What are you grateful for today?"
-          value={dayData.gratitude}
-          onChange={(gratitude) => updateDay({ gratitude })}
-        />
-        <JournalField
-          label="Wins"
-          placeholder="What did you win today?"
-          value={dayData.wins}
-          onChange={(wins) => updateDay({ wins })}
-        />
+          <WolfCheck value={dayData.wolf} onChange={(wolf) => updateDay({ wolf })} />
 
-        {/* Journal */}
-        <JournalField
-          label="Journal Notes"
-          placeholder="Challenges, what happened today..."
-          value={dayData.journal}
-          onChange={(journal) => updateDay({ journal })}
-        />
-        <JournalField
-          label="What could I have done better?"
-          placeholder="Reflect honestly..."
-          value={dayData.reflection}
-          onChange={(reflection) => updateDay({ reflection })}
-        />
-      </div>
+          <div>
+            <p className="mb-3 text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Basics</p>
+            <div className="space-y-2">
+              {BASIC_ITEMS.map((item) => (
+                <BooleanTrackerRow
+                  key={item.key}
+                  label={item.label}
+                  emoji={item.key === "ars" ? "🌅" : item.key === "cfo" ? "📈" : "⚡"}
+                  checked={dayData.basics[item.key]}
+                  onToggle={() => toggleBasic(item.key)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {activeTrackers.length > 0 && (
+            <div>
+              <p className="mb-3 text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Optional trackers</p>
+              <div className="space-y-2">
+                {activeTrackers.map((tracker) => {
+                  const value = getTrackerValue(dayData as unknown as Record<string, unknown>, tracker);
+                  const setValue = (next: TrackerValue) => updateDay({ trackers: { ...dayData.trackers, [tracker.id]: next } });
+                  if (tracker.type === "boolean") {
+                    return (
+                      <BooleanTrackerRow
+                        key={tracker.id}
+                        label={tracker.label}
+                        emoji={tracker.emoji}
+                        checked={Boolean(value)}
+                        onToggle={() => setValue(!value)}
+                      />
+                    );
+                  }
+                  if (tracker.type === "rating") {
+                    return (
+                      <RatingTrackerRow
+                        key={tracker.id}
+                        label={tracker.label}
+                        emoji={tracker.emoji}
+                        value={Number(value)}
+                        onChange={setValue}
+                      />
+                    );
+                  }
+                  return (
+                    <CountCounter
+                      key={tracker.id}
+                      label={`${tracker.emoji} ${tracker.label} Today`}
+                      value={Number(value)}
+                      weeklyTotal={weeklyTrackerTotal(tracker)}
+                      onChange={setValue}
+                      weeklyNote={(total) => <>Weekly: {total}{tracker.unit ? ` ${tracker.unit}` : ""}</>}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <JournalField
+              label="Gratitude"
+              placeholder="What are you grateful for today?"
+              value={dayData.gratitude}
+              onChange={(gratitude) => updateDay({ gratitude })}
+            />
+            <JournalField
+              label="Wins"
+              placeholder="What did you win today?"
+              value={dayData.wins}
+              onChange={(wins) => updateDay({ wins })}
+            />
+            <JournalField
+              label="Journal Notes"
+              placeholder="Challenges, what happened today..."
+              value={dayData.journal}
+              onChange={(journal) => updateDay({ journal })}
+            />
+            <JournalField
+              label="What could I have done better?"
+              placeholder="Reflect honestly..."
+              value={dayData.reflection}
+              onChange={(reflection) => updateDay({ reflection })}
+            />
+          </div>
+        </fieldset>
+      )}
     </div>
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings }) {
+function WeeklyTab({ data, onChange, trackerSettings, user, phase, onPhaseChange }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; phase: "plan" | "review" | "report"; onPhaseChange: (phase: "plan" | "review" | "report") => void }) {
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
   };
 
-  const reflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
+  const coreReflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
     { key: "biggestWin", label: "Biggest Win of the Week", placeholder: "The one win that stands above the rest..." },
+    { key: "improve", label: "What could I have done better?", placeholder: "Be specific and useful..." },
+    { key: "focusNext", label: "What will I do differently next week?", placeholder: "One clear change..." },
+  ];
+  const deeperReflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
     { key: "wins", label: "Other Wins", placeholder: "More wins from this week..." },
     { key: "gratitude", label: "Gratitude", placeholder: "Who or what am I grateful for?" },
-    { key: "lessons", label: "Lessons / Challenges", placeholder: "What did I learn? What did I try and fail at?" },
+    { key: "lessons", label: "Lessons and Challenges", placeholder: "What did I learn? What did I try and fail at?" },
     { key: "focusAchieved", label: "Did I achieve my focus & stretch from last week?", placeholder: "If not, why?" },
-    { key: "focusNext", label: "Focus for the coming week", placeholder: "One clear focus..." },
     { key: "stretchNext", label: "Stretch for the coming week", placeholder: "Push beyond comfort..." },
     { key: "onTrack", label: "Will I reach my goal if I continue this way?", placeholder: "" },
     { key: "cupOverflowing", label: "Is my cup overflowing?", placeholder: "Am I giving from abundance or depletion?" },
-    { key: "improve", label: "What areas do I need to improve?", placeholder: "" },
   ];
 
   return (
     <div className="space-y-6">
+      <PhaseSwitch
+        value={phase}
+        options={[
+          { value: "plan", label: "Plan" },
+          { value: "review", label: "Review" },
+          { value: "report", label: "Report" },
+        ]}
+        onChange={onPhaseChange}
+      />
+
+      {phase === "plan" ? (
+        <>
+          <div>
+            <p className="mb-3 text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">
+              Priorities by territory
+            </p>
+            <div className="space-y-3">
+              {TERRITORIES.map((territory) => (
+                <CommitmentRow
+                  key={territory.key}
+                  territory={territory}
+                  value={data.weekly.priorities[territory.key]}
+                  completed={false}
+                  showCompletion={false}
+                  onChange={(value) => updateWeekly({
+                    priorities: { ...data.weekly.priorities, [territory.key]: value },
+                  })}
+                  onToggle={() => undefined}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">
+              Critical actions & habits
+            </p>
+            <p className="mb-3 mt-1 text-xs text-[--text-faint]">
+              If these happen and nothing else does, the week still moves forward.
+            </p>
+            <div className="space-y-2">
+              {data.weekly.criticalActions.map((action, index) => (
+                <input
+                  key={index}
+                  value={action}
+                  onChange={(event) => {
+                    const criticalActions = [...data.weekly.criticalActions] as [string, string, string];
+                    criticalActions[index] = event.target.value;
+                    updateWeekly({ criticalActions });
+                  }}
+                  placeholder={`Critical action ${index + 1}`}
+                  maxLength={180}
+                  className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] placeholder-[--text-faint] focus:border-[--gold-border] focus:outline-none"
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      ) : phase === "review" ? (
+        <>
       {/* Territory breakdown */}
       <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">Territory Breakdown</p>
@@ -855,16 +1156,35 @@ function WeeklyTab({ data, onChange, trackerSettings }: { data: WeekData; onChan
         </div>
       </div>
 
-      {/* Reflection questions */}
-      {reflectionFields.map(({ key, label, placeholder }) => (
+      {coreReflectionFields.map(({ key, label, placeholder }) => (
         <JournalField
           key={key}
           label={label}
           placeholder={placeholder}
-          value={data.weekly[key]}
+          value={String(data.weekly[key])}
           onChange={(v) => updateWeekly({ [key]: v })}
         />
       ))}
+          <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
+            <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+              Go deeper
+            </summary>
+            <div className="mt-4 space-y-4">
+              {deeperReflectionFields.map(({ key, label, placeholder }) => (
+                <JournalField
+                  key={key}
+                  label={label}
+                  placeholder={placeholder}
+                  value={String(data.weekly[key])}
+                  onChange={(value) => updateWeekly({ [key]: value })}
+                />
+              ))}
+            </div>
+          </details>
+        </>
+      ) : (
+        <ExportTab data={data} user={user} trackerSettings={trackerSettings} />
+      )}
     </div>
   );
 }
@@ -1206,19 +1526,850 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
   );
 }
 
+function normalizeCycle(value: Partial<CycleData> | null | undefined): CycleData {
+  const fallback = createDefaultCycle();
+  return {
+    startsOn: typeof value?.startsOn === "string" ? value.startsOn : fallback.startsOn,
+    endsOn: typeof value?.endsOn === "string" ? value.endsOn : fallback.endsOn,
+    mustWin: typeof value?.mustWin === "string" ? value.mustWin : "",
+    territories: Object.fromEntries(
+      TERRITORY_KEYS.map((key) => [
+        key,
+        {
+          outcome: typeof value?.territories?.[key]?.outcome === "string" ? value.territories[key].outcome : "",
+          keystoneHabit: typeof value?.territories?.[key]?.keystoneHabit === "string"
+            ? value.territories[key].keystoneHabit
+            : "",
+        },
+      ]),
+    ) as CycleData["territories"],
+  };
+}
+
+function emptyCycleForMonth(month: string): CycleData {
+  const range = monthRange(month);
+  return {
+    startsOn: range.startsOn,
+    endsOn: range.endsOn,
+    mustWin: "",
+    territories: createDefaultCycle(new Date(`${range.startsOn}T12:00:00Z`)).territories,
+  };
+}
+
+function loadLocalMonthlyPlan(month: string): CycleData | null {
+  const range = monthRange(month);
+  const saved = localStorage.getItem(monthlyPlanStorageKey(month));
+  const legacy = saved ? null : localStorage.getItem("coil_active_cycle");
+  if (!saved && !legacy) return null;
+  const candidate = normalizeCycle(JSON.parse(saved ?? legacy ?? "null") as Partial<CycleData>);
+  return candidate.startsOn === range.startsOn && candidate.endsOn === range.endsOn ? candidate : null;
+}
+
+function PlanTab({ user, timeZone }: { user: User | null; timeZone: string }) {
+  const currentMonth = localDateInTimeZone(new Date(), timeZone).slice(0, 7);
+  const [planMonth, setPlanMonth] = useState(currentMonth);
+  const [cycle, setCycle] = useState<CycleData>(() => emptyCycleForMonth(currentMonth));
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const range = monthRange(planMonth);
+    const empty = emptyCycleForMonth(planMonth);
+    setLoading(true);
+    setSaveError(null);
+    setSaveStatus("idle");
+
+    if (!user) {
+      try {
+        setCycle(loadLocalMonthlyPlan(planMonth) ?? empty);
+      } catch {
+        setCycle(empty);
+      }
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createClient();
+    supabase
+      .from("cycles")
+      .select("starts_on, ends_on, must_win, territories")
+      .eq("user_id", user.id)
+      .eq("starts_on", range.startsOn)
+      .eq("ends_on", range.endsOn)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setSaveError(error.message);
+          setCycle(empty);
+        }
+        if (data) {
+          setCycle(normalizeCycle({
+            startsOn: data.starts_on,
+            endsOn: data.ends_on,
+            mustWin: data.must_win,
+            territories: data.territories,
+          }));
+        } else if (!error) setCycle(empty);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [planMonth, user]);
+
+  const saveCycle = async () => {
+    setSaveStatus("saving");
+    setSaveError(null);
+    if (!user) {
+      localStorage.setItem(monthlyPlanStorageKey(planMonth), JSON.stringify(cycle));
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 1500);
+      return;
+    }
+
+    const payload = {
+        user_id: user.id,
+        starts_on: cycle.startsOn,
+        ends_on: cycle.endsOn,
+        must_win: cycle.mustWin,
+        territories: cycle.territories,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      };
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("cycles")
+      .upsert(payload, { onConflict: "user_id,starts_on,ends_on" });
+
+    if (error) {
+      setSaveStatus("error");
+      setSaveError(error.message);
+      return;
+    }
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 1500);
+  };
+
+  if (loading) {
+    return <p className="py-10 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading plan…</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Monthly plan</p>
+        <p className="mt-1 text-sm text-[--text-faint]">The same plan created in Review. Edit it here during the month.</p>
+      </div>
+
+      <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+        Plan month
+        <input
+          aria-label="Plan month"
+          type="month"
+          min="2020-01"
+          max="2100-12"
+          value={planMonth}
+          onChange={(event) => { if (event.target.value) setPlanMonth(event.target.value); }}
+          className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text]"
+        />
+      </label>
+      <p className="text-xs text-[--text-faint]">{monthRange(planMonth).label} · {cycle.startsOn} – {cycle.endsOn}</p>
+
+      <JournalField
+        label="The one thing I must accomplish this month"
+        placeholder="The must-win for this month..."
+        value={cycle.mustWin}
+        onChange={(mustWin) => setCycle((current) => ({ ...current, mustWin }))}
+      />
+
+      <div className="space-y-4">
+        {TERRITORIES.map((territory) => (
+          <div key={territory.key} className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: territory.color }} />
+              <p className="text-xs font-mono uppercase tracking-[0.15em]" style={{ color: territory.color }}>
+                {territory.label}
+              </p>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={cycle.territories[territory.key].outcome}
+                onChange={(event) => setCycle({
+                  ...cycle,
+                  territories: {
+                    ...cycle.territories,
+                    [territory.key]: {
+                      ...cycle.territories[territory.key],
+                      outcome: event.target.value,
+                    },
+                  },
+                })}
+                placeholder="Outcome"
+                maxLength={240}
+                className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text] placeholder-[--text-faint] focus:border-[--gold-border] focus:outline-none"
+              />
+              <input
+                value={cycle.territories[territory.key].keystoneHabit}
+                onChange={(event) => setCycle({
+                  ...cycle,
+                  territories: {
+                    ...cycle.territories,
+                    [territory.key]: {
+                      ...cycle.territories[territory.key],
+                      keystoneHabit: event.target.value,
+                    },
+                  },
+                })}
+                placeholder="Keystone habit"
+                maxLength={180}
+                className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text] placeholder-[--text-faint] focus:border-[--gold-border] focus:outline-none"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+      <button
+        type="button"
+        onClick={saveCycle}
+        disabled={saveStatus === "saving"}
+        className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
+        style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
+      >
+        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : "Save plan"}
+      </button>
+    </div>
+  );
+}
+
+const QUARTERLY_REVIEW_PROMPTS = [
+  ["accomplished", "What did I accomplish this quarter?"],
+  ["setbacks", "What were my major setbacks or challenges?"],
+  ["continue", "What practices should I continue?"],
+  ["focus", "Which territory needs greater focus?"],
+  ["lessons", "What were the major lessons?"],
+  ["feeling", "How do I want to feel over the next three months?"],
+  ["oneThing", "What one outcome would meaningfully change my life next quarter?"],
+  ["steps", "What concrete steps will achieve it?"],
+] as const;
+
+function ReviewTab({
+  user,
+  data,
+  onChange,
+  archive,
+  trackerSettings,
+  weekStart,
+  timeZone,
+  monthlyPhase,
+  onMonthlyPhaseChange,
+}: {
+  user: User | null;
+  data: WeekData;
+  onChange: (data: WeekData) => void;
+  archive: ArchivedWeek[];
+  trackerSettings: TrackerSettings;
+  weekStart: "monday" | "sunday";
+  timeZone: string;
+  monthlyPhase: "review" | "plan";
+  onMonthlyPhaseChange: (phase: "review" | "plan") => void;
+}) {
+  const now = new Date();
+  const localToday = localDateInTimeZone(now, timeZone);
+  const localYear = Number(localToday.slice(0, 4));
+  const localMonthIndex = Number(localToday.slice(5, 7)) - 1;
+  const defaultReviewMonth = previousMonthKeyInTimeZone(now, timeZone);
+  const [type, setType] = useState<ReviewType>("month");
+  const [month, setMonth] = useState(defaultReviewMonth);
+  const [quarterYear, setQuarterYear] = useState(localYear);
+  const [quarter, setQuarter] = useState(Math.floor(localMonthIndex / 3) + 1);
+  const [review, setReview] = useState<ReviewData>(() => ({
+    responses: {},
+    plan: emptyMonthlyPlan(nextMonthKey(defaultReviewMonth)),
+  }));
+  const [reviewCycle, setReviewCycle] = useState<CycleData | null>(null);
+  const [remoteEvidenceWeeks, setRemoteEvidenceWeeks] = useState<MonthlyWeek[] | null>(null);
+  const [evidenceStatus, setEvidenceStatus] = useState<"loading" | "ready" | "error">(user ? "loading" : "ready");
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [loadedEvidenceKey, setLoadedEvidenceKey] = useState<string | null>(user ? null : "demo");
+  const [loading, setLoading] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState(false);
+  const currentMonth = localToday.slice(0, 7);
+  const requestedMonthYear = Number(month.slice(0, 4));
+  const safeMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && requestedMonthYear >= 2020 && requestedMonthYear <= 2100
+    ? month
+    : defaultReviewMonth;
+  const safeQuarterYear = Number.isInteger(quarterYear) && quarterYear >= 2020 && quarterYear <= 2100
+    ? quarterYear
+    : localYear;
+  const periodKey = type === "month" ? safeMonth : `${safeQuarterYear}-Q${quarter}`;
+  const period = getReviewPeriod(type, periodKey);
+  const targetMonth = type === "month" ? nextMonthKey(safeMonth) : currentMonth;
+  const evidenceRequestKey = `${type}:${period.startsOn}:${period.endsOn}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadReview = async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
+      setReviewLoadError(null);
+      setSaveError(null);
+      setReviewCycle(null);
+      if (!user) {
+        try {
+          const saved = localStorage.getItem(`coil_review_${type}_${periodKey}`);
+          const parsed = saved ? JSON.parse(saved) as unknown : {};
+          setReview(type === "month"
+            ? decodeStoredReview(parsed, targetMonth)
+            : { responses: parsed && typeof parsed === "object" && "responses" in parsed
+              ? (parsed as ReviewData).responses
+              : parsed as Record<string, string> });
+          if (type === "month") {
+            const reviewedPlan = loadLocalMonthlyPlan(safeMonth);
+            const targetPlan = loadLocalMonthlyPlan(targetMonth);
+            if (reviewedPlan) setReviewCycle(reviewedPlan);
+            if (targetPlan) setReview((current) => ({
+              ...current,
+              plan: syncMonthlyPlanWithCycle(current.plan ?? emptyMonthlyPlan(targetMonth), targetPlan),
+            }));
+          }
+        } catch {
+          setReview(type === "month"
+            ? { responses: {}, plan: emptyMonthlyPlan(targetMonth) }
+            : { responses: {} });
+        }
+        setLoading(false);
+        return;
+      }
+
+      const supabase = createClient();
+      const [savedResult, cycleResult] = await Promise.all([
+        supabase
+          .from("period_reviews")
+          .select("responses")
+          .eq("user_id", user.id)
+          .eq("review_type", type)
+          .eq("starts_on", period.startsOn)
+          .maybeSingle(),
+        type === "month"
+          ? supabase
+              .from("cycles")
+              .select("starts_on, ends_on, must_win, territories")
+              .eq("user_id", user.id)
+              .lte("starts_on", period.endsOn)
+              .gte("ends_on", period.startsOn)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (cancelled) return;
+      if (savedResult.error || cycleResult.error) {
+        const message = savedResult.error?.message ?? cycleResult.error?.message ?? "Could not load review";
+        setSaveError(message);
+        setReviewLoadError(message);
+      }
+      const savedReview = type === "month"
+        ? decodeStoredReview(savedResult.data?.responses, targetMonth)
+        : null;
+      const savedPlanRange = savedReview?.plan ? monthRange(savedReview.plan.targetMonth) : null;
+      const planCycleResult = savedPlanRange
+        ? await supabase
+            .from("cycles")
+            .select("starts_on, ends_on, must_win, territories")
+            .eq("user_id", user.id)
+            .eq("starts_on", savedPlanRange.startsOn)
+            .eq("ends_on", savedPlanRange.endsOn)
+            .maybeSingle()
+        : { data: null, error: null };
+      if (cancelled) return;
+      if (planCycleResult.error) {
+        setSaveError(planCycleResult.error.message);
+        setReviewLoadError(planCycleResult.error.message);
+      }
+      const targetCycle = planCycleResult.data ? normalizeCycle({
+        startsOn: planCycleResult.data.starts_on,
+        endsOn: planCycleResult.data.ends_on,
+        mustWin: planCycleResult.data.must_win,
+        territories: planCycleResult.data.territories,
+      }) : null;
+      setReview(type === "month"
+        ? (() => {
+            const saved = savedReview ?? decodeStoredReview({}, targetMonth);
+            return { ...saved, plan: syncMonthlyPlanWithCycle(saved.plan ?? emptyMonthlyPlan(targetMonth), targetCycle) };
+          })()
+        : { responses: savedResult.data?.responses && typeof savedResult.data.responses === "object"
+          ? savedResult.data.responses as Record<string, string>
+          : {} });
+      if (cycleResult.data) {
+        setReviewCycle(normalizeCycle({
+          startsOn: cycleResult.data.starts_on,
+          endsOn: cycleResult.data.ends_on,
+          mustWin: cycleResult.data.must_win,
+          territories: cycleResult.data.territories,
+        }));
+      }
+      setLoading(false);
+    };
+    void loadReview();
+    return () => {
+      cancelled = true;
+    };
+  }, [periodKey, type, user, targetMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setRemoteEvidenceWeeks(null);
+      setEvidenceStatus("ready");
+      setEvidenceError(null);
+      setLoadedEvidenceKey("demo");
+      return;
+    }
+
+    const loadEvidenceWeeks = async () => {
+      const queryRange = evidenceQueryRange(period, type);
+
+      const result = await createClient()
+        .from("weeks")
+        .select("week_of, data")
+        .eq("user_id", user.id)
+        .gte("week_of", queryRange.startsOn)
+        .lte("week_of", queryRange.endsOn)
+        .order("week_of", { ascending: true });
+      if (cancelled) return;
+      try {
+        setRemoteEvidenceWeeks(monthlyWeeksFromResult(result));
+        setEvidenceStatus("ready");
+        setLoadedEvidenceKey(evidenceRequestKey);
+      } catch (error) {
+        setRemoteEvidenceWeeks(null);
+        setEvidenceStatus("error");
+        setLoadedEvidenceKey(null);
+        setEvidenceError(error instanceof Error ? error.message : "Could not load monthly evidence");
+      }
+    };
+
+    setRemoteEvidenceWeeks(null);
+    setEvidenceStatus("loading");
+    setEvidenceError(null);
+    setLoadedEvidenceKey(null);
+    void loadEvidenceWeeks();
+    return () => {
+      cancelled = true;
+    };
+  }, [period.startsOn, period.endsOn, type, user, evidenceRequestKey]);
+
+  const allWeeks: MonthlyWeek[] = [
+    { weekOf: data.weekOf, days: data.days },
+    ...archive,
+  ].map((week) => "days" in week ? week : ({ weekOf: week.weekOf, days: week.data.days }))
+    .filter((week, index, weeks) =>
+    weeks.findIndex((candidate) => candidate.weekOf === week.weekOf) === index
+  );
+  const evidenceWeeks = user ? (remoteEvidenceWeeks ?? []) : allWeeks;
+  const evidenceReady = !user || (evidenceStatus === "ready" && loadedEvidenceKey === evidenceRequestKey);
+  const reviewReady = !loading && reviewLoadError === null;
+  const today = localDateInTimeZone(new Date(), timeZone);
+  const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today, weekStart);
+  const previousEvidence = buildMonthlyEvidence(evidenceWeeks, (() => {
+    const date = new Date(`${safeMonth}-01T12:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() - 1);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  })(), trackerSettings, today, weekStart);
+  const selectedDays = collectPeriodDays(evidenceWeeks, period.startsOn, period.endsOn, today);
+  const trackedPeriodDays = selectedDays.filter((day) => hasRecordedActivity(day.data));
+  const totalScore = trackedPeriodDays.reduce(
+    (sum, day) => sum + Object.values(day.data.territories ?? {}).filter(Boolean).length,
+    0,
+  );
+  const possibleScore = trackedPeriodDays.length * 5;
+  const territoryTotals = Object.fromEntries(
+    TERRITORY_KEYS.map((key) => [
+      key,
+      trackedPeriodDays.filter((day) => day.data.territories?.[key]).length,
+    ]),
+  ) as Record<TerritoryKey, number>;
+  const prompts = type === "month" ? MONTHLY_REVIEW_PROMPTS : QUARTERLY_REVIEW_PROMPTS;
+
+  const saveReview = async (applyPlan = false) => {
+    if (!evidenceReady || !reviewReady) {
+      setSaveError("Wait for the review and evidence to load before saving.");
+      return;
+    }
+    setSaveStatus("saving");
+    setSaveError(null);
+    let reviewToSave = review;
+    let cycleToApply: CycleData | null = null;
+    if (applyPlan && type === "month" && review.plan) {
+      const planRange = monthRange(review.plan.targetMonth);
+      reviewToSave = review;
+      cycleToApply = {
+        startsOn: planRange.startsOn,
+        endsOn: planRange.endsOn,
+        mustWin: review.plan.responses.mustWin ?? "",
+        territories: review.plan.territories,
+      };
+    }
+    const snapshot = type === "month" ? monthlyEvidence : {
+      days: trackedPeriodDays.length, score: totalScore, possible: possibleScore, territories: territoryTotals,
+    };
+    const storedResponses = type === "month" ? encodeStoredReview(reviewToSave) : review.responses;
+    if (!user) {
+      localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(storedResponses));
+    } else {
+      const { error } = await createClient().rpc("save_period_review_and_cycle", {
+        p_review_type: type,
+        p_starts_on: period.startsOn,
+        p_ends_on: period.endsOn,
+        p_responses: storedResponses,
+        p_snapshot: snapshot,
+        p_cycle_starts_on: cycleToApply?.startsOn ?? null,
+        p_cycle_ends_on: cycleToApply?.endsOn ?? null,
+        p_cycle_must_win: cycleToApply?.mustWin ?? null,
+        p_cycle_territories: cycleToApply?.territories ?? null,
+      });
+      if (error) {
+        setSaveStatus("error");
+        setSaveError(error.message);
+        return;
+      }
+    }
+
+    if (cycleToApply) {
+      const cycle = cycleToApply;
+      const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
+      if (!user) {
+        localStorage.setItem(monthlyPlanStorageKey(reviewToSave.plan?.targetMonth ?? cycle.startsOn.slice(0, 7)), JSON.stringify(cycle));
+      }
+      const weekStartDate = new Date(data.weekOf);
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+      if (isoDate(weekStartDate) <= planRange.endsOn && isoDate(weekEndDate) >= planRange.startsOn) {
+        onChange({
+          ...data,
+          weekly: {
+            ...data.weekly,
+            priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+              key,
+              cycle.territories[key].outcome.trim() || data.weekly.priorities[key],
+            ])) as Record<TerritoryKey, string>,
+          },
+        });
+      }
+    }
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 1500);
+  };
+
+  const updatePlan = (updater: (plan: MonthlyPlan) => MonthlyPlan) => {
+    setReview((current) => ({
+      ...current,
+      plan: updater(current.plan ?? emptyMonthlyPlan(targetMonth)),
+    }));
+  };
+
+  const copyMonthlyReport = async () => {
+    await navigator.clipboard.writeText(monthlyReportText(period.label, monthlyEvidence, review, reviewCycle));
+    setCopyStatus(true);
+    setTimeout(() => setCopyStatus(false), 1500);
+  };
+
+  const currentRate = monthlyEvidence.possible ? monthlyEvidence.score / monthlyEvidence.possible : null;
+  const previousRate = previousEvidence.possible ? previousEvidence.score / previousEvidence.possible : null;
+  const rateDelta = currentRate !== null && previousRate !== null ? Math.round((currentRate - previousRate) * 100) : null;
+
+  return (
+    <div className="space-y-6">
+      <PhaseSwitch
+        value={type}
+        options={[
+          { value: "month", label: "Month" },
+          { value: "quarter", label: "Quarter" },
+        ]}
+        onChange={(value) => {
+          setType(value);
+          if (value === "quarter") onMonthlyPhaseChange("review");
+        }}
+      />
+
+      {!evidenceReady ? (
+        <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+          <p className="text-sm text-[--text-muted]">
+            {evidenceStatus === "loading" ? "Loading complete review evidence…" : "Review evidence is unavailable."}
+          </p>
+          {evidenceError && <p className="mt-2 text-xs text-red-400">{evidenceError}</p>}
+        </div>
+      ) : type === "month" ? (
+        <div className="space-y-3">
+          <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+            Review month
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => { if (event.target.value) setMonth(event.target.value); }}
+              className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
+            />
+          </label>
+          <PhaseSwitch
+            value={monthlyPhase}
+            options={[{ value: "review", label: "Review" }, { value: "plan", label: "Plan next month" }]}
+            onChange={onMonthlyPhaseChange}
+            prominent
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <select
+            value={quarter}
+            onChange={(event) => setQuarter(Number(event.target.value))}
+            className="rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
+          >
+            {[1, 2, 3, 4].map((value) => <option key={value} value={value}>Q{value}</option>)}
+          </select>
+          <input
+            type="number"
+            value={quarterYear}
+            min={2020}
+            max={2100}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (Number.isInteger(value)) setQuarterYear(value);
+            }}
+            className="rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text] focus:border-[--gold-border] focus:outline-none"
+          />
+        </div>
+      )}
+
+      {type === "month" ? (
+        <>
+          <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">{period.label} evidence</p>
+                <p className="mt-1 text-xs text-[--text-faint]">
+                  {monthlyEvidence.trackedDays}/{monthlyEvidence.elapsedDays} days with recorded activity
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-xl text-[--gold]">{monthlyEvidence.score}/{monthlyEvidence.possible}</p>
+                {rateDelta !== null && <p className="text-xs text-[--text-faint]">{rateDelta >= 0 ? "+" : ""}{rateDelta} pts vs prior month</p>}
+              </div>
+            </div>
+            {monthlyEvidence.trackedDays === 0 && (
+              <p className="mt-4 rounded-xl border border-[--border] bg-[--bg] p-3 text-sm text-[--text-muted]">
+                No tracked days found. You can still complete the review from memory; the app will not pretend missing days were failures.
+              </p>
+            )}
+            <div className="mt-4 space-y-3 border-t border-[--border] pt-4">
+              {TERRITORIES.map((territory) => (
+                <div key={territory.key}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span style={{ color: territory.color }}>{territory.label}</span>
+                    <span className="font-mono text-xs text-[--text-muted]">
+                      {monthlyEvidence.territoryTotals[territory.key]}/{monthlyEvidence.elapsedDays}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-[--text-faint]">
+                    Commitments: {monthlyEvidence.commitmentsCompleted[territory.key]}/{monthlyEvidence.commitmentsPlanned[territory.key]} completed
+                  </p>
+                </div>
+              ))}
+            </div>
+            {monthlyEvidence.weeklyTrend.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-[--border] pt-3">
+                <p className="text-[10px] font-mono uppercase tracking-[0.12em] text-[--text-faint]">Weekly trend</p>
+                {monthlyEvidence.weeklyTrend.map((week) => (
+                  <div key={week.startsOn} className="flex justify-between text-sm">
+                    <span className="text-[--text-muted]">Week of {new Date(`${week.startsOn}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    <span className="font-mono text-xs">{week.score}/{week.possible} · {week.trackedDays}d</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4 space-y-4">
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Patterns</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[{ label: "ARS", value: monthlyEvidence.basics.ars }, { label: "AD", value: monthlyEvidence.basics.ad }, { label: "CFO", value: monthlyEvidence.basics.cfo }].map((item) => (
+                <div key={item.label} className="rounded-xl bg-[--bg] p-3">
+                  <p className="font-mono text-lg text-[--gold]">{item.value}</p>
+                  <p className="text-[10px] uppercase text-[--text-faint]">{item.label}</p>
+                </div>
+              ))}
+            </div>
+            {monthlyEvidence.trackers.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {monthlyEvidence.trackers.map((tracker) => (
+                  <details key={tracker.id} className="rounded-xl bg-[--bg] px-3 py-2 text-sm">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                      <span>{tracker.emoji} {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
+                    </summary>
+                    <div className="mt-2 border-t border-[--border] pt-2 text-[11px] leading-5 text-[--text-faint]">
+                      {tracker.entries.length > 0
+                        ? tracker.entries.map((entry) => (
+                            <div key={entry.date} className="flex justify-between gap-2">
+                              <span>{new Date(`${entry.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                              <span className="font-mono">{typeof entry.value === "boolean" ? "yes" : entry.value}</span>
+                            </div>
+                          ))
+                        : <span>No recorded dates</span>}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border p-4" style={{ borderColor: reviewCycle ? "var(--gold-border)" : "var(--border)", backgroundColor: "var(--bg-card)" }}>
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Goals context</p>
+            {reviewCycle ? (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-[--text]">{reviewCycle.mustWin || "No must-win recorded"}</p>
+                {TERRITORIES.filter((territory) => reviewCycle.territories[territory.key].outcome).map((territory) => (
+                  <p key={territory.key} className="text-xs text-[--text-muted]"><span style={{ color: territory.color }}>{territory.label}:</span> {reviewCycle.territories[territory.key].outcome}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-[--text-muted]">
+                No goals were set for {period.label}. That is not a blocker—review what actually happened, then use Plan to create the next month.
+              </p>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-[--border] bg-[--bg-card] p-4">
+          <div className="flex items-end justify-between">
+            <div><p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">{period.label}</p><p className="mt-1 text-xs text-[--text-faint]">{trackedPeriodDays.length} tracked days</p></div>
+            <p className="font-mono text-xl text-[--gold]">{totalScore}/{possibleScore}</p>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="py-8 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading review…</p>
+      ) : type === "month" && monthlyPhase === "plan" ? (
+        <div className="space-y-5">
+          <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+            Plan month
+            <input
+              type="month"
+              value={review.plan?.targetMonth ?? targetMonth}
+              onChange={(event) => { if (event.target.value) updatePlan((plan) => ({ ...plan, targetMonth: event.target.value })); }}
+              className="mt-2 w-full rounded-xl border border-[--border] bg-[--bg-input] px-4 py-3 text-sm text-[--text]"
+            />
+          </label>
+          <p className="text-sm text-[--text-muted]">
+            {period.label} Review → {monthRange(review.plan?.targetMonth ?? targetMonth).label} Plan
+          </p>
+          {MONTHLY_PLAN_PROMPTS.map(([key, label]) => (
+            <JournalField
+              key={key}
+              label={label}
+              placeholder="Make it concrete..."
+              value={review.plan?.responses[key] ?? ""}
+              onChange={(value) => updatePlan((plan) => ({ ...plan, responses: { ...plan.responses, [key]: value } }))}
+            />
+          ))}
+          <div className="space-y-3">
+            <p className="text-xs font-mono uppercase tracking-[0.15em] text-[--text-muted]">Territory outcomes → Week → Day</p>
+            {TERRITORIES.map((territory) => (
+              <div key={territory.key} className="rounded-2xl border border-[--border] bg-[--bg-card] p-4 space-y-2">
+                <p className="text-xs font-mono uppercase tracking-[0.12em]" style={{ color: territory.color }}>{territory.label}</p>
+                <input
+                  value={review.plan?.territories[territory.key].outcome ?? ""}
+                  onChange={(event) => updatePlan((plan) => ({ ...plan, territories: { ...plan.territories, [territory.key]: { ...plan.territories[territory.key], outcome: event.target.value } } }))}
+                  placeholder="Outcome / priority"
+                  className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text]"
+                />
+                <input
+                  value={review.plan?.territories[territory.key].keystoneHabit ?? ""}
+                  onChange={(event) => updatePlan((plan) => ({ ...plan, territories: { ...plan.territories, [territory.key]: { ...plan.territories[territory.key], keystoneHabit: event.target.value } } }))}
+                  placeholder="Keystone habit"
+                  className="w-full rounded-xl border border-[--border] bg-[--bg-input] px-3 py-2.5 text-sm text-[--text]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        prompts.map(([key, label]) => (
+          <JournalField
+            key={key}
+            label={label}
+            placeholder="Reflect from the evidence above..."
+            value={review.responses[key] ?? ""}
+            onChange={(value) => setReview((current) => ({
+              ...current,
+              responses: { ...current.responses, [key]: value },
+            }))}
+          />
+        ))
+      )}
+
+      {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+      <button
+        type="button"
+        onClick={() => void saveReview(type === "month" && monthlyPhase === "plan")}
+        disabled={saveStatus === "saving" || !evidenceReady || !reviewReady}
+        className="w-full rounded-2xl py-4 text-sm font-mono uppercase tracking-[0.12em] disabled:opacity-50"
+        style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
+      >
+        {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved" : type === "month" && monthlyPhase === "plan" ? "Save & apply monthly plan" : `Save ${type} review`}
+      </button>
+
+      {type === "month" ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" disabled={!evidenceReady} onClick={() => void copyMonthlyReport()} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted] disabled:opacity-50">
+            {copyStatus ? "Copied" : "Copy report"}
+          </button>
+          {user ? (
+            <button type="button" disabled={!evidenceReady} onClick={() => { window.location.href = `/api/pdf/monthly-review?month=${safeMonth}`; }} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted] disabled:opacity-50">
+              Monthly PDF
+            </button>
+          ) : (
+            <button type="button" disabled className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-faint] opacity-50">PDF requires account</button>
+          )}
+        </div>
+      ) : (
+        <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
+          <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">Share & exports</summary>
+          <div className="mt-5"><ExportTab data={data} user={user} trackerSettings={trackerSettings} /></div>
+        </details>
+      )}
+
+      <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
+        <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
+          History
+        </summary>
+        <div className="mt-5">
+          <PastWeeksTab archive={archive} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "daily", label: "Daily" },
-  { key: "weekly", label: "Weekly" },
-  { key: "export", label: "Export" },
-  { key: "past", label: "Past Weeks" },
+  { key: "today", label: "Today" },
+  { key: "week", label: "Week" },
+  { key: "plan", label: "Plan" },
+  { key: "review", label: "Review" },
 ];
 
 export default function CoilApp() {
   // Read initial state from URL params
   const initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const initTab = (initParams.get("tab") as TabKey) ?? "daily";
+  const initTab = parseTab(initParams.get("tab"));
   // "week" param is an ISO date string (e.g. "2026-02-23"), not a relative offset
   const initWeekDate = initParams.get("week");
   const initOffset = (() => {
@@ -1229,12 +2380,15 @@ export default function CoilApp() {
     const diffMs = target.getTime() - current.getTime();
     return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
   })();
+  const initView = resolveView(initTab, initParams.get("view") ?? initParams.get("subtab") ?? initParams.get("phase"), initOffset);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
+  const [activeView, setActiveView] = useState<AppView>(initView);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
   const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
+  const [timeZone, setTimeZone] = useState("UTC");
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>(DEFAULT_TRACKER_SETTINGS);
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
@@ -1242,13 +2396,12 @@ export default function CoilApp() {
   const [weekOffset, setWeekOffset] = useState(initOffset); // 0 = current week, -1 = last week, etc.
   const weekOffsetRef = useRef(initOffset); // mirror for use in stale closures
   const weekOffsetInitialized = useRef(initOffset !== 0); // skip initial nav effect run (auth effect handles it)
+  const urlWriteModeRef = useRef<"replace" | "push">("replace");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [weekLoadError, setWeekLoadError] = useState<string | null>(null);
   const isDemo = user === null && weekData !== null;
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncAbort = useRef<AbortController | null>(null);
-  const weekDataRef = useRef(weekData);
-  weekDataRef.current = weekData;
+  const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -1292,57 +2445,141 @@ export default function CoilApp() {
   // Auth check → populate state from the right source, no flicker
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user }, error: authError }) => {
+      if (authError && authError.name !== "AuthSessionMissingError") throw authError;
       if (user) {
         // Authenticated: Supabase is the only source. Never touch localStorage.
         setUser(user);
         demoClearAll(); // wipe any leftover demo data
         // Load settings (for weekStart) in parallel
         const supabaseClient = createClient();
-        const { data: settingsData } = await supabaseClient
+        const settingsResult = await supabaseClient
           .from("settings")
-          .select("week_start, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+          .select("week_start, timezone, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
           .eq("user_id", user.id)
           .maybeSingle();
+        const settingsData = nullableDataOrThrow(settingsResult);
         const ws: "monday" | "sunday" = (settingsData?.week_start as "monday" | "sunday") ?? "monday";
         setWeekStart(ws);
+        setTimeZone(typeof settingsData?.timezone === "string" ? settingsData.timezone : "UTC");
         setTrackerSettings(trackerSettingsFromRow(settingsData));
-        const [remoteWeek, remoteArchive] = await Promise.all([
-          fetchCurrentFromSupabase(user.id, initOffset, ws),
-          fetchArchiveFromSupabase(user.id),
-        ]);
-        setWeekData(remoteWeek ?? emptyWeekData(getWeekStart(new Date(), ws)));
-        setArchive(remoteArchive);
+        const resolvedOffset = initWeekDate ? (() => {
+          const target = new Date(`${initWeekDate}T12:00:00Z`);
+          const current = getWeekStart(new Date(), ws);
+          return Math.round((target.getTime() - current.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        })() : 0;
+        weekOffsetRef.current = resolvedOffset;
+        weekOffsetInitialized.current = true;
+        setWeekOffset(resolvedOffset);
+        const requestedWeek = isoDate(getMondayForOffset(resolvedOffset, ws));
+        try {
+          const [remoteWeek, remoteArchive, activeCycle] = await Promise.all([
+            fetchCurrentFromSupabase(user.id, resolvedOffset, ws),
+            fetchArchiveFromSupabase(user.id, ws),
+            fetchCycleForWeek(user.id, requestedWeek),
+          ]);
+          setWeekLoadError(null);
+          setWeekData(applyCycleToWeek(
+            remoteWeek ?? emptyWeekData(getMondayForOffset(resolvedOffset, ws)),
+            activeCycle,
+          ));
+          setArchive(remoteArchive);
+        } catch (error) {
+          setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
+        }
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
         setUser(null);
+        setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
         setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
         setWeekData(demoLoadCurrent());
         setArchive(demoLoadArchive());
       }
+    }).catch((error) => {
+      setWeekLoadError(error instanceof Error ? error.message : "Could not verify authentication");
     });
   }, []);
 
-  // Sync tab + week ISO date to URL params (no page reload, preserves back/forward)
+  // Keep section, subtab, and week addressable in the URL at all times.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (activeTab !== "daily") params.set("tab", activeTab);
-    if (weekOffset !== 0 && weekData) {
-      // Use the actual weekOf date — stable across time, not relative
-      params.set("week", new Date(weekData.weekOf).toISOString().slice(0, 10));
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", activeTab);
+    params.set("view", activeView);
+    params.delete("subtab");
+    params.delete("phase");
+    if (weekOffset !== 0) {
+      params.set("week", isoDate(getMondayForOffset(weekOffset, weekStart)));
+    } else {
+      params.delete("week");
     }
     const qs = params.toString();
-    const newUrl = qs ? `?${qs}` : window.location.pathname;
-    window.history.replaceState(null, "", newUrl);
-  }, [activeTab, weekOffset, weekData]);
+    const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const writeMode = urlWriteModeRef.current;
+    urlWriteModeRef.current = "replace";
+    if (newUrl !== currentUrl) {
+      window.history[writeMode === "push" ? "pushState" : "replaceState"](null, "", newUrl);
+    }
+  }, [activeTab, activeView, weekOffset, weekStart]);
+
+  useEffect(() => {
+    const restoreUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = parseTab(params.get("tab"));
+      const weekDate = params.get("week");
+      const offset = weekDate
+        ? Math.round((new Date(`${weekDate}T12:00:00Z`).getTime() - getWeekStart(new Date(), weekStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        : 0;
+      setActiveTab(tab);
+      setActiveView(resolveView(tab, params.get("view") ?? params.get("subtab") ?? params.get("phase"), offset));
+      if (offset !== weekOffsetRef.current) {
+        weekOffsetRef.current = offset;
+        setWeekOffset(offset);
+      }
+    };
+    window.addEventListener("popstate", restoreUrlState);
+    return () => window.removeEventListener("popstate", restoreUrlState);
+  }, [weekStart]);
+
+  const selectTab = (tab: TabKey) => {
+    const nextView = defaultViewForTab(tab, weekOffset);
+    if (tab === activeTab && nextView === activeView) return;
+    urlWriteModeRef.current = "push";
+    setActiveTab(tab);
+    setActiveView(nextView);
+  };
+
+  const selectView = (view: AppView) => {
+    if (view === activeView) return;
+    urlWriteModeRef.current = "push";
+    setActiveView(view);
+  };
+
+  const navigateWeek = (offset: number) => {
+    if (offset === weekOffset) return;
+    urlWriteModeRef.current = "push";
+    weekOffsetRef.current = offset;
+    setWeekOffset(offset);
+    setActiveView(defaultViewForTab(activeTab, offset));
+  };
 
   // Reload week data when offset changes (week navigation)
   useEffect(() => {
     if (!weekOffsetInitialized.current) { weekOffsetInitialized.current = true; return; }
     if (!user) return;
     setWeekData(null);
-    fetchCurrentFromSupabase(user.id, weekOffset, weekStart).then((w) => {
-      setWeekData(w ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)));
+    const requestedWeek = isoDate(getMondayForOffset(weekOffset, weekStart));
+    Promise.all([
+      fetchCurrentFromSupabase(user.id, weekOffset, weekStart),
+      fetchCycleForWeek(user.id, requestedWeek),
+    ]).then(([week, cycle]) => {
+      setWeekLoadError(null);
+      setWeekData(applyCycleToWeek(
+        week ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)),
+        cycle,
+      ));
+    }).catch((error) => {
+      setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
     });
   }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1360,9 +2597,19 @@ export default function CoilApp() {
     const currentMonday = getWeekStart(new Date(), weekStart).toISOString();
     if (weekData.weekOf !== currentMonday) {
       const hasContent = calcScore(weekData) > 0 ||
-        Object.values(weekData.weekly).some(v => v.trim() !== "") ||
+        Object.values(weekData.weekly).some((value) => {
+          if (typeof value === "string") return value.trim() !== "";
+          if (Array.isArray(value)) return value.some((item) => typeof item === "string" && item.trim() !== "");
+          return value && typeof value === "object"
+            ? Object.values(value).some((item) => typeof item === "string" && item.trim() !== "")
+            : false;
+        }) ||
         Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting || Object.values(d.trackers ?? {}).some(Boolean) || d.gratitude.trim() !== "" || d.wins.trim() !== ""
+          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.tomorrowPriority.trim() !== "" ||
+          Object.values(d.commitments).some((commitment) => commitment.trim() !== "") ||
+          Object.values(d.basics).some(Boolean) ||
+          (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting ||
+          Object.values(d.trackers ?? {}).some(Boolean) || d.gratitude.trim() !== "" || d.wins.trim() !== ""
         );
       if (hasContent) {
         const newArchive: ArchivedWeek[] = [
@@ -1390,24 +2637,14 @@ export default function CoilApp() {
       return;
     }
     if (!user) return;
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      const latestData = weekDataRef.current;
-      if (!latestData) return;
-      // Abort any in-flight save before starting a new one
-      if (syncAbort.current) syncAbort.current.abort();
-      const controller = new AbortController();
-      syncAbort.current = controller;
+    const dataToSave = weekData;
+    const saveKey = new Date(dataToSave.weekOf).toISOString().slice(0, 10);
+    const priorTimer = syncTimers.current.get(saveKey);
+    if (priorTimer) clearTimeout(priorTimer);
+    const timer = setTimeout(() => {
+      syncTimers.current.delete(saveKey);
       setSaveStatus("saving");
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        setSaveStatus("timeout");
-        setSaveError("Timed out");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-      }, 10000);
-      syncCurrentToSupabase(user.id, latestData, controller.signal, weekOffset !== 0).then((err) => {
-        clearTimeout(timeoutId);
-        if (controller.signal.aborted) return;
+      queueWeekSave(user.id, dataToSave, weekOffset !== 0).then((err) => {
         if (err) {
           setSaveError(err);
           setSaveStatus("error");
@@ -1419,31 +2656,37 @@ export default function CoilApp() {
           // Update in-memory archive if editing a past week
           if (weekOffset !== 0) {
             setArchive(prev => {
-              const wOf = weekData.weekOf;
+              const wOf = dataToSave.weekOf;
               const exists = prev.some(a => a.weekOf === wOf);
               if (exists) {
-                return prev.map(a => a.weekOf === wOf ? { ...a, data: weekData } : a);
+                return prev.map(a => a.weekOf === wOf ? { ...a, data: dataToSave } : a);
               }
-              return [{ weekOf: wOf, data: weekData, archivedAt: new Date().toISOString() }, ...prev];
+              return [{ weekOf: wOf, data: dataToSave, archivedAt: new Date().toISOString() }, ...prev];
             });
           }
         }
       }).catch((e) => {
-        clearTimeout(timeoutId);
-        if (controller.signal.aborted) return;
         console.error("Autosave failed:", e);
         setSaveError(String(e));
         setSaveStatus("error");
         setTimeout(() => setSaveStatus("idle"), 4000);
       });
     }, 1500);
+    syncTimers.current.set(saveKey, timer);
   }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading state — auth check pending
   if (!weekData) {
     return (
       <div className="min-h-screen bg-[--bg] flex items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading…</p>
+        {weekLoadError ? (
+          <div className="space-y-4 text-center">
+            <p className="text-sm text-red-400">Could not load this week: {weekLoadError}</p>
+            <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-[--border] px-4 py-2 text-sm text-[--text-muted]">Retry</button>
+          </div>
+        ) : (
+          <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading…</p>
+        )}
       </div>
     );
   }
@@ -1482,11 +2725,13 @@ export default function CoilApp() {
               </button>
             </div>
           </div>
+          {(activeTab === "today" || activeTab === "week") && (
+            <>
           {/* Row 2: Week nav + subtitle/email */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <button
-                onClick={() => { const n = weekOffset - 1; weekOffsetRef.current = n; setWeekOffset(n); }}
+                onClick={() => navigateWeek(weekOffset - 1)}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
                 title="Previous week"
@@ -1499,7 +2744,7 @@ export default function CoilApp() {
                 <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
               </div>
               <button
-                onClick={() => { const n = Math.min(0, weekOffset + 1); weekOffsetRef.current = n; setWeekOffset(n); }}
+                onClick={() => navigateWeek(Math.min(0, weekOffset + 1))}
                 disabled={weekOffset === 0}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
@@ -1529,6 +2774,8 @@ export default function CoilApp() {
               </div>
             </div>
           </div>
+            </>
+          )}
 
         </div>
 
@@ -1538,7 +2785,7 @@ export default function CoilApp() {
             {TABS.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
                 style={{ color: activeTab === tab.key ? "var(--gold)" : "var(--text-dim)" }}
               >
@@ -1553,17 +2800,17 @@ export default function CoilApp() {
 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
-          {activeTab === "daily" && (
-            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
+          {activeTab === "today" && (
+            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} phase={activeView === "close" ? "close" : "plan"} onPhaseChange={selectView} weekOffset={weekOffset} weekStart={weekStart} />
           )}
-          {activeTab === "weekly" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} />
+          {activeTab === "week" && (
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
           )}
-          {activeTab === "export" && (
-            <ExportTab data={weekData} user={user} trackerSettings={trackerSettings} />
+          {activeTab === "plan" && (
+            <PlanTab user={user} timeZone={timeZone} />
           )}
-          {activeTab === "past" && (
-            <PastWeeksTab archive={archive} />
+          {activeTab === "review" && (
+            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
           )}
         </div>
       </div>

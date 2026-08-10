@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { ArrowLeft, Sun, Moon, Monitor, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { nullableDataOrThrow } from "@/lib/supabase-result";
 import { createTrackerId, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, trackerSettingsToRow, type TrackerDefinition, type TrackerSettings, type TrackerType } from "@/lib/tracking";
 import type { User } from "@supabase/supabase-js";
 
@@ -121,6 +122,7 @@ function SettingsInner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [emailPdf, setEmailPdf] = useState(true);
@@ -148,7 +150,8 @@ function SettingsInner() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user }, error: authError }) => {
+      if (authError && authError.name !== "AuthSessionMissingError") throw authError;
       if (!user) {
         // Demo mode: local settings only, skip Supabase-backed email/reminder fields.
         setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
@@ -157,11 +160,12 @@ function SettingsInner() {
       }
       setUser(user);
 
-      const { data } = await supabase
+      const result = await supabase
         .from("settings")
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
+      const data = nullableDataOrThrow(result);
 
       const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -186,10 +190,14 @@ function SettingsInner() {
         setReportEmail(user.email ?? "");
       }
       setLoading(false);
+    }).catch((error) => {
+      setLoadError(error instanceof Error ? error.message : "Could not load settings");
+      setLoading(false);
     });
   }, []);
 
   const handleSave = async () => {
+    if (loadError) return;
     setSaving(true);
     if (!user) {
       localStorage.setItem("coil_tracker_settings", JSON.stringify(trackerSettings));
@@ -287,6 +295,17 @@ function SettingsInner() {
     return (
       <div className="min-h-screen bg-[--bg] flex items-center justify-center">
         <p className="font-mono text-xs tracking-[0.2em] text-[--text-faint] uppercase">Loading...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-[--bg] flex items-center justify-center">
+        <div className="space-y-4 text-center">
+          <p className="text-sm text-red-400">Could not load settings: {loadError}</p>
+          <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-[--border] px-4 py-2 text-sm text-[--text-muted]">Retry</button>
+        </div>
       </div>
     );
   }
@@ -869,7 +888,7 @@ function SettingsInner() {
           {/* Save button */}
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || Boolean(loadError)}
             className="w-full py-3.5 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium transition-all duration-200 active:scale-[0.98] disabled:opacity-40"
             style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
           >

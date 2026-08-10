@@ -17,6 +17,14 @@ interface DayData {
   wins: string;
   journal: string;
   reflection: string;
+  commitments?: Partial<Record<TerritoryKey, string>>;
+  basics?: {
+    ars?: boolean;
+    ad?: boolean;
+    workout?: boolean;
+    cfo?: boolean;
+  };
+  tomorrowPriority?: string;
 }
 
 export interface WeekData {
@@ -33,14 +41,16 @@ export interface WeekData {
     onTrack: string;
     cupOverflowing: string;
     improve: string;
+    priorities?: Partial<Record<TerritoryKey, string>>;
+    criticalActions?: string[];
   };
 }
 
 const TERRITORIES: { key: TerritoryKey; label: string }[] = [
   { key: "self", label: "Self" },
   { key: "health", label: "Health" },
-  { key: "relationships", label: "Relationships" },
   { key: "wealth", label: "Wealth" },
+  { key: "relationships", label: "Relationships" },
   { key: "business", label: "Business" },
 ];
 
@@ -59,7 +69,7 @@ const WEEKLY_FIELDS: [keyof WeekData["weekly"], string][] = [
   ["biggestWin",    "Biggest Win"],
   ["wins",          "Other Wins"],
   ["gratitude",     "Gratitude"],
-  ["lessons",       "Lessons"],
+  ["lessons",       "Lessons and Challenges"],
   ["focusAchieved", "Focus achieved"],
   ["focusNext",     "Focus next week"],
   ["stretchNext",   "Stretch"],
@@ -70,6 +80,33 @@ const WEEKLY_FIELDS: [keyof WeekData["weekly"], string][] = [
 
 function weeklyLines(w: WeekData["weekly"]): string[] {
   return WEEKLY_FIELDS.map(([key, label]) => `${label}: ${w[key] || "—"}`);
+}
+
+function weeklyPlanLines(w: WeekData["weekly"]): string[] {
+  const priorities = TERRITORIES.flatMap((territory) => {
+    const priority = w.priorities?.[territory.key]?.trim();
+    return priority ? [`${territory.label}: ${priority}`] : [];
+  });
+  const criticalActions = w.criticalActions?.map((action) => action.trim()).filter(Boolean) ?? [];
+  if (criticalActions.length) priorities.push(`Critical actions: ${criticalActions.join("; ")}`);
+  return priorities;
+}
+
+function dailyCommitmentLines(day: DayData): string[] {
+  return TERRITORIES.flatMap((territory) => {
+    const commitment = day.commitments?.[territory.key]?.trim();
+    return commitment ? [`${territory.label} commitment: ${commitment}`] : [];
+  });
+}
+
+function completedBasics(day: DayData): string[] {
+  const labels: [keyof NonNullable<DayData["basics"]>, string][] = [
+    ["ars", "ARS"],
+    ["ad", "AD"],
+    ["workout", "Workout"],
+    ["cfo", "Be the CFO"],
+  ];
+  return labels.flatMap(([key, label]) => day.basics?.[key] ? [label] : []);
 }
 
 function calcScore(data: WeekData): number {
@@ -121,18 +158,26 @@ export function generatePlainReport(data: WeekData, settings: TrackerSettings = 
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length ||
+      dailyCommitmentLines(d).length || completedBasics(d).length || d.tomorrowPriority;
     if (!hasContent) continue;
     const parts: string[] = [];
     const wolf = d.wolf?.length ? ` (Wolf: ${d.wolf.join(", ")})` : "";
     parts.push(`${DAY_LABELS[day]}${wolf}`);
+    parts.push(...dailyCommitmentLines(d));
+    const basics = completedBasics(d);
+    if (basics.length) parts.push(`Basics: ${basics.join(", ")}`);
     if (d.gratitude) parts.push(`Grateful: ${d.gratitude}`);
     if (d.wins) parts.push(`Wins: ${d.wins}`);
     if (d.journal) parts.push(d.journal);
     if (d.reflection) parts.push(`Better: ${d.reflection}`);
+    if (d.tomorrowPriority) parts.push(`Tomorrow's #1: ${d.tomorrowPriority}`);
     dayParts.push(parts.join("\n"));
   }
   if (dayParts.length) allParts.push(dayParts.join("\n\n"));
+
+  const planLines = weeklyPlanLines(data.weekly);
+  if (planLines.length) allParts.push(planLines.join("\n"));
 
   // Weekly reflection
   allParts.push(weeklyLines(data.weekly).join("\n"));
@@ -173,20 +218,37 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
   for (const day of DAYS) {
     const d = data.days[day];
     if (!d) continue;
-    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length ||
+      dailyCommitmentLines(d).length || completedBasics(d).length || d.tomorrowPriority;
     if (!hasContent) continue;
     const wolf = d.wolf?.length ? ` · Wolf: ${d.wolf.join(", ")}` : "";
     const plainParts: string[] = [];
     const htmlFieldLines: string[] = [];
     plainParts.push(`${DAY_LABELS[day]}${wolf}`);
+    for (const line of dailyCommitmentLines(d)) {
+      plainParts.push(line);
+      htmlFieldLines.push(boldKey(line));
+    }
+    const basics = completedBasics(d);
+    if (basics.length) {
+      plainParts.push(`Basics: ${basics.join(", ")}`);
+      htmlFieldLines.push(`<strong>Basics:</strong> ${esc(basics.join(", "))}`);
+    }
     if (d.gratitude) { plainParts.push(`Grateful: ${d.gratitude}`); htmlFieldLines.push(`<strong>Grateful:</strong> ${esc(d.gratitude)}`); }
     if (d.wins) { plainParts.push(`Wins: ${d.wins}`); htmlFieldLines.push(`<strong>Wins:</strong> ${esc(d.wins)}`); }
     if (d.journal) { plainParts.push(d.journal); htmlFieldLines.push(esc(d.journal)); }
     if (d.reflection) { plainParts.push(`Better: ${d.reflection}`); htmlFieldLines.push(`<strong>Better:</strong> ${esc(d.reflection)}`); }
+    if (d.tomorrowPriority) {
+      plainParts.push(`Tomorrow's #1: ${d.tomorrowPriority}`);
+      htmlFieldLines.push(`<strong>Tomorrow's #1:</strong> ${esc(d.tomorrowPriority)}`);
+    }
     lines.push(plainParts.join("  "));
     const dayHeading = `<h3>${esc(DAY_LABELS[day])}${esc(wolf)}</h3>`;
     dailyHtmlLines.push(dayHeading + (htmlFieldLines.length ? htmlFieldLines.join("<br>") : ""));
   }
+
+  const planLines = weeklyPlanLines(data.weekly);
+  if (planLines.length) lines.push(planLines.join("\n"));
 
   // Weekly reflection
   const reflParts = weeklyLines(data.weekly);
@@ -197,6 +259,7 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
 
   const plain = lines.join("\n");
   const htmlParts: string[] = [`<p>${headerLines.map(boldKey).join("<br>")}</p>`];
+  if (planLines.length) htmlParts.push(`<h2>Weekly Plan</h2>${planLines.map((line) => `<p>${boldKey(line)}</p>`).join("")}`);
   if (dailyHtmlLines.length) htmlParts.push(dailyHtmlLines.join(""));
   if (reflParts.length) {
     const weeklyHtml = `<h2>Weekly Reflection</h2>` + reflParts.map(p => `<p>${boldKey(p)}</p>`).join("");
@@ -246,21 +309,25 @@ export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DE
   const dayHtml = DAYS.map(day => {
     const d = data.days[day];
     if (!d) return "";
-    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length;
+    const hasContent = d.gratitude || d.wins || d.journal || d.reflection || d.wolf?.length ||
+      dailyCommitmentLines(d).length || completedBasics(d).length || d.tomorrowPriority;
     if (!hasContent) return "";
     const wolf = d.wolf?.length ? ` <span style="color:#888;font-size:13px">· Wolf: ${esc(d.wolf.join(", "))}</span>` : "";
     const fields = [
+      ...dailyCommitmentLines(d).map((line) => `<div>${boldKey(line)}</div>`),
+      completedBasics(d).length ? `<div><span style="${style.label}">Basics:</span> <span style="${style.value}">${esc(completedBasics(d).join(", "))}</span></div>` : "",
       d.gratitude ? `<div><span style="${style.label}">Grateful:</span> <span style="${style.value}">${esc(d.gratitude)}</span></div>` : "",
       d.wins ? `<div><span style="${style.label}">Wins:</span> <span style="${style.value}">${esc(d.wins)}</span></div>` : "",
       d.journal ? `<div style="color:#333;margin:4px 0">${esc(d.journal)}</div>` : "",
       d.reflection ? `<div><span style="${style.label}">Better:</span> <span style="${style.value}">${esc(d.reflection)}</span></div>` : "",
+      d.tomorrowPriority ? `<div><span style="${style.label}">Tomorrow's #1:</span> <span style="${style.value}">${esc(d.tomorrowPriority)}</span></div>` : "",
     ].filter(Boolean).join("");
     return `<div style="margin-bottom:12px"><div style="${style.h3}">${DAY_LABELS[day]}${wolf}</div>${fields}</div>`;
   }).join("");
 
   // Weekly reflection — always show all fields
   const reflHtml = WEEKLY_FIELDS.map(([key, label]) => {
-    const v = w[key] || "—";
+    const v = String(w[key] || "—");
     return `<div style="margin-bottom:6px"><span style="${style.label}">${esc(label)}:</span> <span style="${style.value}">${esc(v)}</span></div>`;
   }).join("");
 
@@ -279,6 +346,8 @@ export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DE
   </div>
 
   ${dayHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Daily Journal</h2>${dayHtml}</div>` : ""}
+
+  ${weeklyPlanLines(w).length ? `<div style="${style.section}"><h2 style="${style.h2}">Weekly Plan</h2>${weeklyPlanLines(w).map((line) => `<div>${boldKey(line)}</div>`).join("")}</div>` : ""}
 
   ${reflHtml ? `<div style="${style.section}"><h2 style="${style.h2}">Weekly Reflection</h2>${reflHtml}</div>` : ""}
 </div>`;
@@ -304,6 +373,13 @@ export function generateReport(data: WeekData, settings: TrackerSettings = DEFAU
   const totals = DAYS.map((d) => Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length);
   lines.push(`| **Total** | ${totals.join(" | ")} | **${score}/${TOTAL_POSSIBLE}** |`);
   lines.push(``);
+  const planLines = weeklyPlanLines(data.weekly);
+  if (planLines.length) {
+    lines.push(`## Weekly Plan`);
+    lines.push(``);
+    for (const line of planLines) lines.push(`**${line.split(":")[0]}:**${line.slice(line.indexOf(":") + 1)}`);
+    lines.push(``);
+  }
   for (const tracker of enabledTrackers(settings)) {
     lines.push(`## ${tracker.label} Tracking ${tracker.emoji}`);
     const row = trackerValues(data, tracker).map((value) => tracker.type === "boolean" ? (value ? "✅" : "⬜") : trackerValueLabel(value, tracker)).join(" | ");
@@ -319,6 +395,12 @@ export function generateReport(data: WeekData, settings: TrackerSettings = DEFAU
     if (!d) continue;
     lines.push(`### ${DAY_LABELS[day]}`);
     if (d.wolf?.length) lines.push(`**Wolf:** ${d.wolf.join(", ")}`);
+    for (const line of dailyCommitmentLines(d)) {
+      const separator = line.indexOf(":");
+      lines.push(`**${line.slice(0, separator)}:**${line.slice(separator + 1)}`);
+    }
+    const basics = completedBasics(d);
+    if (basics.length) lines.push(`**Basics:** ${basics.join(", ")}`);
     for (const tracker of enabledTrackers(settings)) {
       lines.push(`**${tracker.emoji} ${tracker.label}:** ${trackerValueLabel(getTrackerValue(d as unknown as Record<string, unknown>, tracker), tracker)}`);
     }
@@ -326,6 +408,7 @@ export function generateReport(data: WeekData, settings: TrackerSettings = DEFAU
     if (d.wins) lines.push(`**Wins:** ${d.wins}`);
     if (d.journal) lines.push(`**Notes:** ${d.journal}`);
     if (d.reflection) lines.push(`**Could do better:** ${d.reflection}`);
+    if (d.tomorrowPriority) lines.push(`**Tomorrow's #1:** ${d.tomorrowPriority}`);
     lines.push(``);
   }
   lines.push(`## Weekly Reflection`);

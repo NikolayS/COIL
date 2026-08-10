@@ -24,6 +24,51 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
+  db-integration:
+    name: DB Integration (RLS + Atomic Save)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap Supabase auth helper
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists auth;
+          create or replace function auth.uid() returns uuid language sql stable as $$
+            select coalesce(
+              nullif(current_setting('request.jwt.claim.sub', true), ''),
+              nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
+            )::uuid
+          $$;
+          SQL
+
+      - name: Apply schema and idempotent migration twice
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/init.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260803_monthly_review_atomic.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20260803_monthly_review_atomic.sql
+
+      - name: Verify RLS, privileges, and atomic rollback
+        run: psql -f supabase/tests/intentional_integration.sql
+
   # ── 2. Build (depends on unit tests passing) ────────────────────────────────
   build:
     name: Build
@@ -45,16 +90,14 @@ jobs:
       - name: Build
         run: npm run build
 
-  # ── 3. Playwright E2E against live site ────────────────────────────────────
-  #
-  # Runs against https://coil.5am.team (PLAYWRIGHT_BASE_URL).
-  # Auth-gated tests skip gracefully when secrets are absent.
-  # Demo-mode tests (demo.spec.ts) always run — no secrets needed.
+  # ── 3. Playwright E2E against the checked-out change ───────────────────────
   e2e-test:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     env:
-      PLAYWRIGHT_BASE_URL: https://coil.5am.team
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SUPABASE_URL: https://coil.5am.team
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.COIL_APP_NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       # Optional: set these secrets in GitHub to enable auth-gated settings tests
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
@@ -67,6 +110,16 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Build checked-out app
+        run: npm run build
+
+      - name: Start checked-out app
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          node .next/standalone/server.js > /tmp/coil-e2e.log 2>&1 &
+          npx wait-on http://127.0.0.1:3000 --timeout 60000
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
