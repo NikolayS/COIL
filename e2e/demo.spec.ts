@@ -164,6 +164,14 @@ test.describe("Demo mode — home page", () => {
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
   });
 
+  test("weekly report export is discoverable from the Week tab", async ({ page }) => {
+    await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
+    await page.getByRole("button", { name: "Report", exact: true }).click();
+
+    await expect(page.getByRole("button", { name: "Copy for AI Chat" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rich Copy (for TPM)" })).toBeVisible();
+  });
+
   test("past weeks open the Week tab on Review by default", async ({ page }) => {
     test.skip(RUNS_AGAINST_PRODUCTION, "Past-week defaults are verified against the PR preview until merged");
     await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();

@@ -1036,8 +1036,8 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; weekOffset?: number }) {
-  const [phase, setPhase] = useState<"plan" | "review">(weekOffset < 0 ? "review" : "plan");
+function WeeklyTab({ data, onChange, trackerSettings, user, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; weekOffset?: number }) {
+  const [phase, setPhase] = useState<"plan" | "review" | "report">(weekOffset < 0 ? "review" : "plan");
 
   useEffect(() => {
     setPhase(weekOffset < 0 ? "review" : "plan");
@@ -1069,6 +1069,7 @@ function WeeklyTab({ data, onChange, trackerSettings, weekOffset = 0 }: { data: 
         options={[
           { value: "plan", label: "Plan" },
           { value: "review", label: "Review" },
+          { value: "report", label: "Report" },
         ]}
         onChange={setPhase}
       />
@@ -1121,7 +1122,7 @@ function WeeklyTab({ data, onChange, trackerSettings, weekOffset = 0 }: { data: 
             </div>
           </div>
         </>
-      ) : (
+      ) : phase === "review" ? (
         <>
       {/* Territory breakdown */}
       <div className="bg-[--bg-card] rounded-2xl p-4 border border-[--border] space-y-3">
@@ -1189,6 +1190,8 @@ function WeeklyTab({ data, onChange, trackerSettings, weekOffset = 0 }: { data: 
             </div>
           </details>
         </>
+      ) : (
+        <ExportTab data={data} user={user} trackerSettings={trackerSettings} />
       )}
     </div>
   );
@@ -2757,7 +2760,7 @@ export default function CoilApp() {
             <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "week" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} />
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} user={user} weekOffset={weekOffset} />
           )}
           {activeTab === "plan" && (
             <PlanTab user={user} timeZone={timeZone} />
