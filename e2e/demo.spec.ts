@@ -28,6 +28,13 @@ function firstTerritoryCompletion(page: Page) {
     .first();
 }
 
+async function expectRoute(page: Page, tab: string, view: string) {
+  await expect.poll(() => {
+    const url = new URL(page.url());
+    return { tab: url.searchParams.get("tab"), view: url.searchParams.get("view") };
+  }).toEqual({ tab, view });
+}
+
 test.describe("Demo mode — home page", () => {
   test.beforeEach(async ({ page, context, baseURL }) => {
     // Set demo cookie so middleware allows access without authentication
@@ -162,6 +169,31 @@ test.describe("Demo mode — home page", () => {
       await page.getByRole("button", { name: "Review", exact: true }).last().click();
     }
     await expect(page.getByText("Territory Breakdown")).toBeVisible();
+  });
+
+  test("section and subtab state is always reflected in the URL", async ({ page }) => {
+    await expectRoute(page, "today", "plan");
+
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expectRoute(page, "today", "close");
+
+    await page.getByRole("button", { name: /^(Week|Weekly)$/ }).click();
+    await expectRoute(page, "week", "plan");
+    await page.getByRole("button", { name: "Report", exact: true }).click();
+    await expectRoute(page, "week", "report");
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Report", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.goBack();
+    await expectRoute(page, "week", "plan");
+
+    await page.getByRole("button", { name: "Plan", exact: true }).first().click();
+    await expectRoute(page, "plan", "plan");
+
+    await page.getByRole("button", { name: "Review", exact: true }).first().click();
+    await expectRoute(page, "review", "review");
+    await page.getByRole("button", { name: "Plan next month", exact: true }).click();
+    await expectRoute(page, "review", "plan");
   });
 
   test("weekly report export is discoverable from the Week tab", async ({ page }) => {

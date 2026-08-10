@@ -23,6 +23,7 @@ import {
   type MonthlyWeek,
 } from "@/lib/monthly";
 import { evidenceQueryRange, localDateInTimeZone, monthlyWeeksFromResult, previousMonthKeyInTimeZone } from "@/lib/monthly-data";
+import { defaultViewForTab, parseTab, resolveView, type AppView, type TabKey } from "@/lib/navigation";
 import {
   TERRITORY_KEYS,
   createDefaultCycle,
@@ -47,7 +48,6 @@ import type { User } from "@supabase/supabase-js";
 
 type WolfMode = "wise" | "open" | "loving" | "fierce";
 type WolfModes = WolfMode[];
-type TabKey = "today" | "week" | "plan" | "review";
 type ReviewPeriod = "month" | "quarter" | "ytd" | "year" | "custom";
 
 interface DayData extends DailyIntentions {
@@ -752,15 +752,13 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
+function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; phase: DailyPhase; onPhaseChange: (phase: DailyPhase) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
   const todayKey = getTodayKey();
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
-  const [phase, setPhase] = useState<DailyPhase>(weekOffset < 0 ? "close" : "plan");
   const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setActiveDay(weekOffset < 0 ? "sun" : todayKey);
-    setPhase(weekOffset < 0 ? "close" : "plan");
   }, [weekOffset, todayKey]);
 
   const dayData = data.days[activeDay] ?? emptyDayData();
@@ -830,7 +828,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
           { value: "plan", label: "Plan" },
           { value: "close", label: "Close" },
         ]}
-        onChange={setPhase}
+        onChange={onPhaseChange}
         prominent
       />
 
@@ -845,7 +843,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
               key={day}
               onClick={() => {
                 setActiveDay(day);
-                setPhase(defaultDailyPhase(daysAgo(day)));
+                onPhaseChange(defaultDailyPhase(daysAgo(day)));
               }}
               className="flex flex-col items-center py-2.5 rounded-xl transition-all duration-150 active:scale-95"
               style={{
@@ -1036,13 +1034,7 @@ function DailyTab({ data, onChange, trackerSettings, weekOffset = 0, weekStart =
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings, user, weekOffset = 0 }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; weekOffset?: number }) {
-  const [phase, setPhase] = useState<"plan" | "review" | "report">(weekOffset < 0 ? "review" : "plan");
-
-  useEffect(() => {
-    setPhase(weekOffset < 0 ? "review" : "plan");
-  }, [weekOffset]);
-
+function WeeklyTab({ data, onChange, trackerSettings, user, phase, onPhaseChange }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; phase: "plan" | "review" | "report"; onPhaseChange: (phase: "plan" | "review" | "report") => void }) {
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
   };
@@ -1071,7 +1063,7 @@ function WeeklyTab({ data, onChange, trackerSettings, user, weekOffset = 0 }: { 
           { value: "review", label: "Review" },
           { value: "report", label: "Report" },
         ]}
-        onChange={setPhase}
+        onChange={onPhaseChange}
       />
 
       {phase === "plan" ? (
@@ -1771,6 +1763,8 @@ function ReviewTab({
   trackerSettings,
   weekStart,
   timeZone,
+  monthlyPhase,
+  onMonthlyPhaseChange,
 }: {
   user: User | null;
   data: WeekData;
@@ -1779,6 +1773,8 @@ function ReviewTab({
   trackerSettings: TrackerSettings;
   weekStart: "monday" | "sunday";
   timeZone: string;
+  monthlyPhase: "review" | "plan";
+  onMonthlyPhaseChange: (phase: "review" | "plan") => void;
 }) {
   const now = new Date();
   const localToday = localDateInTimeZone(now, timeZone);
@@ -1786,7 +1782,6 @@ function ReviewTab({
   const localMonthIndex = Number(localToday.slice(5, 7)) - 1;
   const defaultReviewMonth = previousMonthKeyInTimeZone(now, timeZone);
   const [type, setType] = useState<ReviewType>("month");
-  const [monthlyPhase, setMonthlyPhase] = useState<"review" | "plan">("review");
   const [month, setMonth] = useState(defaultReviewMonth);
   const [quarterYear, setQuarterYear] = useState(localYear);
   const [quarter, setQuarter] = useState(Math.floor(localMonthIndex / 3) + 1);
@@ -2098,7 +2093,10 @@ function ReviewTab({
           { value: "month", label: "Month" },
           { value: "quarter", label: "Quarter" },
         ]}
-        onChange={setType}
+        onChange={(value) => {
+          setType(value);
+          if (value === "quarter") onMonthlyPhaseChange("review");
+        }}
       />
 
       {!evidenceReady ? (
@@ -2122,7 +2120,7 @@ function ReviewTab({
           <PhaseSwitch
             value={monthlyPhase}
             options={[{ value: "review", label: "Review" }, { value: "plan", label: "Plan next month" }]}
-            onChange={setMonthlyPhase}
+            onChange={onMonthlyPhaseChange}
             prominent
           />
         </div>
@@ -2371,14 +2369,7 @@ const TABS: { key: TabKey; label: string }[] = [
 export default function CoilApp() {
   // Read initial state from URL params
   const initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const requestedTab = initParams.get("tab");
-  const initTab: TabKey = requestedTab === "week" || requestedTab === "weekly"
-    ? "week"
-    : requestedTab === "plan" || requestedTab === "cycle"
-      ? "plan"
-      : requestedTab === "review" || requestedTab === "export" || requestedTab === "past"
-        ? "review"
-        : "today";
+  const initTab = parseTab(initParams.get("tab"));
   // "week" param is an ISO date string (e.g. "2026-02-23"), not a relative offset
   const initWeekDate = initParams.get("week");
   const initOffset = (() => {
@@ -2389,8 +2380,10 @@ export default function CoilApp() {
     const diffMs = target.getTime() - current.getTime();
     return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
   })();
+  const initView = resolveView(initTab, initParams.get("view") ?? initParams.get("subtab") ?? initParams.get("phase"), initOffset);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
+  const [activeView, setActiveView] = useState<AppView>(initView);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
   const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
   const [user, setUser] = useState<User | null>(null);
@@ -2403,6 +2396,7 @@ export default function CoilApp() {
   const [weekOffset, setWeekOffset] = useState(initOffset); // 0 = current week, -1 = last week, etc.
   const weekOffsetRef = useRef(initOffset); // mirror for use in stale closures
   const weekOffsetInitialized = useRef(initOffset !== 0); // skip initial nav effect run (auth effect handles it)
+  const urlWriteModeRef = useRef<"replace" | "push">("replace");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [weekLoadError, setWeekLoadError] = useState<string | null>(null);
@@ -2506,18 +2500,68 @@ export default function CoilApp() {
     });
   }, []);
 
-  // Sync tab + week ISO date to URL params (no page reload, preserves back/forward)
+  // Keep section, subtab, and week addressable in the URL at all times.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (activeTab !== "today") params.set("tab", activeTab);
-    if (weekOffset !== 0 && weekData) {
-      // Use the actual weekOf date — stable across time, not relative
-      params.set("week", new Date(weekData.weekOf).toISOString().slice(0, 10));
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", activeTab);
+    params.set("view", activeView);
+    params.delete("subtab");
+    params.delete("phase");
+    if (weekOffset !== 0) {
+      params.set("week", isoDate(getMondayForOffset(weekOffset, weekStart)));
+    } else {
+      params.delete("week");
     }
     const qs = params.toString();
-    const newUrl = qs ? `?${qs}` : window.location.pathname;
-    window.history.replaceState(null, "", newUrl);
-  }, [activeTab, weekOffset, weekData]);
+    const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const writeMode = urlWriteModeRef.current;
+    urlWriteModeRef.current = "replace";
+    if (newUrl !== currentUrl) {
+      window.history[writeMode === "push" ? "pushState" : "replaceState"](null, "", newUrl);
+    }
+  }, [activeTab, activeView, weekOffset, weekStart]);
+
+  useEffect(() => {
+    const restoreUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = parseTab(params.get("tab"));
+      const weekDate = params.get("week");
+      const offset = weekDate
+        ? Math.round((new Date(`${weekDate}T12:00:00Z`).getTime() - getWeekStart(new Date(), weekStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        : 0;
+      setActiveTab(tab);
+      setActiveView(resolveView(tab, params.get("view") ?? params.get("subtab") ?? params.get("phase"), offset));
+      if (offset !== weekOffsetRef.current) {
+        weekOffsetRef.current = offset;
+        setWeekOffset(offset);
+      }
+    };
+    window.addEventListener("popstate", restoreUrlState);
+    return () => window.removeEventListener("popstate", restoreUrlState);
+  }, [weekStart]);
+
+  const selectTab = (tab: TabKey) => {
+    const nextView = defaultViewForTab(tab, weekOffset);
+    if (tab === activeTab && nextView === activeView) return;
+    urlWriteModeRef.current = "push";
+    setActiveTab(tab);
+    setActiveView(nextView);
+  };
+
+  const selectView = (view: AppView) => {
+    if (view === activeView) return;
+    urlWriteModeRef.current = "push";
+    setActiveView(view);
+  };
+
+  const navigateWeek = (offset: number) => {
+    if (offset === weekOffset) return;
+    urlWriteModeRef.current = "push";
+    weekOffsetRef.current = offset;
+    setWeekOffset(offset);
+    setActiveView(defaultViewForTab(activeTab, offset));
+  };
 
   // Reload week data when offset changes (week navigation)
   useEffect(() => {
@@ -2687,7 +2731,7 @@ export default function CoilApp() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <button
-                onClick={() => { const n = weekOffset - 1; weekOffsetRef.current = n; setWeekOffset(n); }}
+                onClick={() => navigateWeek(weekOffset - 1)}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
                 title="Previous week"
@@ -2700,7 +2744,7 @@ export default function CoilApp() {
                 <p className="text-sm font-mono text-[--text-muted]">{weekOf}</p>
               </div>
               <button
-                onClick={() => { const n = Math.min(0, weekOffset + 1); weekOffsetRef.current = n; setWeekOffset(n); }}
+                onClick={() => navigateWeek(Math.min(0, weekOffset + 1))}
                 disabled={weekOffset === 0}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
                 style={{backgroundColor:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-muted)"}}
@@ -2741,7 +2785,7 @@ export default function CoilApp() {
             {TABS.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 className="px-3 py-3 text-xs font-mono tracking-[0.12em] uppercase transition-colors duration-150 relative"
                 style={{ color: activeTab === tab.key ? "var(--gold)" : "var(--text-dim)" }}
               >
@@ -2757,16 +2801,16 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "today" && (
-            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} weekOffset={weekOffset} weekStart={weekStart} />
+            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} phase={activeView === "close" ? "close" : "plan"} onPhaseChange={selectView} weekOffset={weekOffset} weekStart={weekStart} />
           )}
           {activeTab === "week" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} user={user} weekOffset={weekOffset} />
+            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
           )}
           {activeTab === "plan" && (
             <PlanTab user={user} timeZone={timeZone} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} />
+            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
           )}
         </div>
       </div>
