@@ -49,9 +49,17 @@ const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const TERRITORIES = [
   { key: "self" as const, label: "Self" },
   { key: "health" as const, label: "Health" },
-  { key: "relationships" as const, label: "Relationships" },
   { key: "wealth" as const, label: "Wealth" },
+  { key: "relationships" as const, label: "Relationships" },
   { key: "business" as const, label: "Business" },
+];
+
+const TERRITORY_COLORS = [
+  rgb(0.24, 0.63, 0.42),
+  rgb(0.78, 0.31, 0.31),
+  rgb(0.23, 0.49, 0.75),
+  rgb(0.82, 0.52, 0.16),
+  rgb(0.48, 0.27, 0.86),
 ];
 
 const COLORS = {
@@ -138,17 +146,17 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
   }
 
   // ── HEADER ──
-  drawText("COIL", MARGIN, y, { bold: true, size: 26, color: COLORS.primary });
-  y -= 30;
-  drawText("Daily Territory Tracker & Journal", MARGIN, y, { size: 10, color: COLORS.mid });
-  y -= 18;
+  drawText("COIL  ·  WEEKLY REPORT", MARGIN, y, { bold: true, size: 10, color: COLORS.primary });
+  y -= 20;
   hline(y, COLORS.primary);
-  y -= 16;
+  y -= 24;
 
-  const weekDate = new Date(data.weekOf.includes("T") ? data.weekOf : data.weekOf + "T12:00:00Z").toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric",
-  });
-  drawText(`Weekly Report — Week of ${weekDate}`, MARGIN, y, { bold: true, size: 16 });
+  const weekStart = new Date(data.weekOf.includes("T") ? data.weekOf : data.weekOf + "T12:00:00Z");
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+  const startLabel = weekStart.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+  const endLabel = weekEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  drawText(`${startLabel} - ${endLabel}`, MARGIN, y, { bold: true, size: 18 });
   y -= 32;
 
   // ── SCORE SUMMARY ──
@@ -158,125 +166,127 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
     if (d) totalScore += Object.values(d.territories).filter(Boolean).length;
   }
 
-  page.drawRectangle({ x: MARGIN, y: y - 8, width: 160, height: 30, color: COLORS.rowAlt });
-  drawText("Weekly Score:", MARGIN + 8, y + 6, { bold: true, size: 12 });
-  drawText(`${totalScore} / 35`, MARGIN + 102, y + 6, { bold: true, size: 12, color: COLORS.primary });
+  const scorePercent = Math.round(totalScore / 35 * 100);
+  page.drawRectangle({ x: MARGIN, y: y - 8, width: 220, height: 30, color: COLORS.rowAlt });
+  drawText("Weekly Score", MARGIN + 8, y + 6, { bold: true, size: 12 });
+  drawText(`${totalScore} / 35  (${scorePercent}%)`, MARGIN + 94, y + 6, { bold: true, size: 12, color: COLORS.primary });
   y -= 42;
 
-  // ── TERRITORY TABLE ──
-  checkY(120);
-  drawText("Daily Territory Scores", MARGIN, y, { bold: true, size: 12 });
-  y -= 16;
+  // ── COMPACT SCORECARD ──
+  const trackers = enabledTrackers(settings);
+  const cardHeight = 48 + TERRITORIES.length * 27 + (trackers.length ? 18 + trackers.length * 20 : 0) + 18;
+  checkY(cardHeight);
+  const cardTop = y;
+  page.drawRectangle({
+    x: MARGIN,
+    y: cardTop - cardHeight,
+    width: COL_W,
+    height: cardHeight,
+    color: rgb(0.96, 0.95, 0.99),
+    borderColor: rgb(0.78, 0.76, 0.84),
+    borderWidth: 0.8,
+  });
+  y -= 24;
+  drawText("TERRITORY BREAKDOWN", MARGIN + 16, y, { bold: true, size: 10, color: COLORS.mid });
+  y -= 24;
 
-  const COL_TERRITORY = 108;
-  const COL_DAY = 32;
-  const COL_TOTAL = 42;
-  const ROW_H = 17;
-
-  function drawTableHeader() {
-    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.primary });
-    let x = MARGIN + 4;
-    const headers = ["Territory", ...DAY_LABELS, "Total"];
-    const widths = [COL_TERRITORY, ...Array(7).fill(COL_DAY), COL_TOTAL];
-    for (let i = 0; i < headers.length; i++) {
-      page.drawText(headers[i], { x, y: y + 2, font: fontBold, size: 9, color: COLORS.white });
-      x += widths[i];
-    }
-    y -= ROW_H;
-  }
-
-  drawTableHeader();
-
+  const labelX = MARGIN + 16;
+  const barX = MARGIN + 128;
+  const barW = 290;
+  const scoreX = PAGE_W - MARGIN - 38;
   for (let ti = 0; ti < TERRITORIES.length; ti++) {
-    const t = TERRITORIES[ti];
-    const bg = ti % 2 === 0 ? COLORS.rowAlt : COLORS.white;
-    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: bg });
-    let x = MARGIN + 4;
-    const widths = [COL_TERRITORY, ...Array(7).fill(COL_DAY), COL_TOTAL];
-    const cells = [
-      t.label,
-      ...DAYS.map((d) => (data.days[d]?.territories[t.key] ? "Y" : "-")),
-      `${DAYS.filter((d) => data.days[d]?.territories[t.key]).length}/7`,
-    ];
-    for (let i = 0; i < cells.length; i++) {
-      const isY = cells[i] === "Y";
-      page.drawText(cells[i], {
-        x, y: y + 2,
-        font: isY ? fontBold : fontRegular,
-        size: 9,
-        color: isY ? COLORS.green : COLORS.dark,
-      });
-      x += widths[i];
-    }
-    y -= ROW_H;
+    const territory = TERRITORIES[ti];
+    const score = DAYS.filter((day) => data.days[day]?.territories[territory.key]).length;
+    const color = TERRITORY_COLORS[ti];
+    drawText(territory.label, labelX, y, { bold: true, size: 10, color });
+    page.drawRectangle({ x: barX, y: y + 1, width: barW, height: 7, color: rgb(0.88, 0.87, 0.91) });
+    if (score > 0) page.drawRectangle({ x: barX, y: y + 1, width: barW * score / 7, height: 7, color });
+    drawText(`${score}/7`, scoreX, y, { size: 10 });
+    y -= 27;
   }
 
-  // Totals row
-  const dayTotals = DAYS.map((d) =>
-    Object.values(data.days[d]?.territories ?? {}).filter(Boolean).length
-  );
-  page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: rgb(0.88, 0.88, 0.88) });
-  {
-    let x = MARGIN + 4;
-    const widths = [COL_TERRITORY, ...Array(7).fill(COL_DAY), COL_TOTAL];
-    const cells = ["Total", ...dayTotals.map(String), `${totalScore}/35`];
-    for (let i = 0; i < cells.length; i++) {
-      page.drawText(cells[i], { x, y: y + 2, font: fontBold, size: 9, color: COLORS.dark });
-      x += widths[i];
-    }
-  }
-  y -= ROW_H + 20;
-
-  function drawCountTable(title: string, values: number[], totalOverride?: string) {
-    checkY(60);
-    drawText(title, MARGIN, y, { bold: true, size: 12 });
-    y -= 16;
-
-    const countColW = COL_W / 8;
-    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.primary });
-    {
-      let x = MARGIN + 4;
-      for (const lbl of [...DAY_LABELS, "Total"]) {
-        page.drawText(lbl, { x, y: y + 2, font: fontBold, size: 9, color: COLORS.white });
-        x += countColW;
-      }
-    }
-    y -= ROW_H;
-
-    const total = totalOverride ?? String(values.reduce((a, b) => a + b, 0));
-    page.drawRectangle({ x: MARGIN, y: y - 4, width: COL_W, height: ROW_H, color: COLORS.rowAlt });
-    {
-      let x = MARGIN + 4;
-      for (const v of [...values.map(String), total]) {
-        page.drawText(v, { x, y: y + 2, font: fontRegular, size: 9, color: COLORS.dark });
-        x += countColW;
-      }
-    }
-    y -= ROW_H + 24;
+  if (trackers.length) {
+    page.drawLine({
+      start: { x: MARGIN + 16, y: y + 10 },
+      end: { x: PAGE_W - MARGIN - 16, y: y + 10 },
+      thickness: 0.5,
+      color: rgb(0.65, 0.63, 0.7),
+    });
+    y -= 7;
   }
 
-  // ── TRACKERS ──
-  for (const tracker of enabledTrackers(settings)) {
+  for (const tracker of trackers) {
     const values = DAYS.map((day) => Number(getTrackerValue(data.days[day] as unknown as Record<string, unknown>, tracker)));
-    const total = tracker.type === "boolean"
-      ? `${values.filter(Boolean).length}/7`
+    const result = tracker.type === "boolean"
+      ? `${values.filter(Boolean).length}/7 achieved`
       : tracker.type === "rating"
         ? (() => {
             const rated = values.filter((value) => value > 0);
-            return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5` : "-";
+            return rated.length ? `${(rated.reduce((sum, value) => sum + value, 0) / rated.length).toFixed(1)}/5 average` : "no entries";
           })()
-        : undefined;
-    drawCountTable(`${tracker.emoji} ${tracker.label}`, values, total);
+        : `${values.reduce((sum, value) => sum + value, 0)} this week`;
+    page.drawCircle({ x: labelX + 3, y: y + 4, size: 2.5, color: COLORS.primary });
+    drawText(tracker.label, labelX + 12, y, { size: 10 });
+    const resultWidth = fontRegular.widthOfTextAtSize(result, 9);
+    drawText(result, PAGE_W - MARGIN - 16 - resultWidth, y, { size: 9, color: COLORS.mid });
+    y -= 20;
+  }
+  y = cardTop - cardHeight - 24;
+
+  // ── WEEKLY SUMMARY ──
+  checkY(50);
+  drawText("Weekly Summary", MARGIN, y, { bold: true, size: 15 });
+  y -= 24;
+
+  const w = data.weekly;
+  const summaryFields: [string, string | undefined][] = [
+    ["Biggest Win", w.biggestWin],
+    ["Wins", w.wins],
+    ["Gratitude", w.gratitude],
+    ["Lessons", w.lessons],
+    ["Focus Achieved", w.focusAchieved],
+    ["Focus Next Week", w.focusNext],
+    ["Stretch Next Week", w.stretchNext],
+    ["Am I On Track?", w.onTrack],
+    ["Cup Overflowing", w.cupOverflowing],
+    ["Areas to Improve", w.improve],
+  ];
+
+  for (const [label, value] of summaryFields) {
+    if (!value?.trim()) continue;
+    const valueLines = wrapText(value, COL_W, 10);
+    checkY(18 + Math.min(valueLines.length, 2) * 13);
+    drawText(label, MARGIN, y, { bold: true, size: 11, color: COLORS.dark });
+    y -= 15;
+    for (const line of valueLines) {
+      checkY(13);
+      drawText(line, MARGIN, y, { size: 10 });
+      y -= 13;
+    }
+    y -= 8;
   }
 
-  // ── DAILY JOURNAL ──
-  checkY(40);
-  hline(y + 6);
-  y -= 4;
-  drawText("Daily Journal", MARGIN, y, { bold: true, size: 12 });
-  y -= 20;
+  // ── DAILY RECORD LOG ──
+  const daysWithContent = DAYS.filter((day) => {
+    const dayData = data.days[day];
+    return dayData && (dayData.journal || dayData.reflection || dayData.gratitude || dayData.wins || dayData.wolf?.length);
+  });
 
-  for (const day of DAYS) {
+  if (daysWithContent.length) {
+    if (doc.getPageCount() === 1) {
+      newPage();
+    } else {
+      y -= 8;
+      hline(y);
+      y -= 24;
+    }
+    drawText("Daily Record Log", MARGIN, y, { bold: true, size: 15 });
+    y -= 12;
+    drawText("The detail behind the weekly summary", MARGIN, y, { size: 9, color: COLORS.mid });
+    y -= 24;
+  }
+
+  for (const day of daysWithContent) {
     const d = data.days[day];
     if (!d) continue;
     const hasContent = d.journal || d.reflection || d.gratitude || d.wins || (d.wolf && d.wolf.length > 0);
@@ -331,50 +341,6 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
       }
     }
     y -= 8;
-  }
-
-  // ── WEEKLY REFLECTION ──
-  checkY(50);
-  y -= 4;
-  hline(y + 6);
-  y -= 4;
-  drawText("Weekly Reflection", MARGIN, y, { bold: true, size: 12 });
-  y -= 20;
-
-  const w = data.weekly;
-  const reflFields: [string, string | undefined][] = [
-    ["Biggest Win", w.biggestWin],
-    ["Wins", w.wins],
-    ["Gratitude", w.gratitude],
-    ["Lessons", w.lessons],
-    ["Focus achieved", w.focusAchieved],
-    ["Focus next week", w.focusNext],
-    ["Stretch next week", w.stretchNext],
-    ["On track", w.onTrack],
-    ["Cup overflowing", w.cupOverflowing],
-    ["Areas to improve", w.improve],
-  ];
-
-  for (const [label, val] of reflFields) {
-    if (!val?.trim()) continue;
-    checkY(28);
-    const labelStr = `${label}: `;
-    const labelW = fontBold.widthOfTextAtSize(labelStr, 10);
-    const valueLines = wrapText(val, COL_W - labelW - 4, 10);
-
-    drawText(labelStr, MARGIN, y, { bold: true, size: 10 });
-    if (valueLines.length > 0) {
-      drawText(valueLines[0], MARGIN + labelW, y, { size: 10 });
-      y -= 13;
-      for (let li = 1; li < valueLines.length; li++) {
-        checkY(13);
-        drawText(valueLines[li], MARGIN + 10, y, { size: 10 });
-        y -= 13;
-      }
-    } else {
-      y -= 13;
-    }
-    y -= 4;
   }
 
   // ── FOOTER on each page ──
