@@ -243,7 +243,7 @@ export async function generateReportPdf(data: WeekData, settings: TrackerSetting
     ["Biggest Win", w.biggestWin],
     ["Wins", w.wins],
     ["Gratitude", w.gratitude],
-    ["Lessons", w.lessons],
+    ["Lessons and Challenges", w.lessons],
     ["Focus Achieved", w.focusAchieved],
     ["Focus Next Week", w.focusNext],
     ["Stretch Next Week", w.stretchNext],

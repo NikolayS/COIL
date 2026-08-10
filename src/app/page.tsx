@@ -1047,7 +1047,7 @@ function WeeklyTab({ data, onChange, trackerSettings, user, phase, onPhaseChange
   const deeperReflectionFields: { key: keyof WeekData["weekly"]; label: string; placeholder: string }[] = [
     { key: "wins", label: "Other Wins", placeholder: "More wins from this week..." },
     { key: "gratitude", label: "Gratitude", placeholder: "Who or what am I grateful for?" },
-    { key: "lessons", label: "Lessons / Challenges", placeholder: "What did I learn? What did I try and fail at?" },
+    { key: "lessons", label: "Lessons and Challenges", placeholder: "What did I learn? What did I try and fail at?" },
     { key: "focusAchieved", label: "Did I achieve my focus & stretch from last week?", placeholder: "If not, why?" },
     { key: "stretchNext", label: "Stretch for the coming week", placeholder: "Push beyond comfort..." },
     { key: "onTrack", label: "Will I reach my goal if I continue this way?", placeholder: "" },

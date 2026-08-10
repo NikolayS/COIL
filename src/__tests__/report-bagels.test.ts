@@ -70,6 +70,16 @@ describe("bagel tracking in report outputs", () => {
     expect(html).toContain("🥯 Bagels: 4");
   });
 
+  it("labels the weekly reflection as Lessons and Challenges in reports", () => {
+    const week = makeWeek();
+    week.weekly.lessons = "Keep the lesson; name the challenge.";
+
+    expect(generateReport(week)).toContain("Lessons and Challenges: Keep the lesson; name the challenge.");
+    expect(generatePlainReport(week)).toContain("Lessons and Challenges: Keep the lesson; name the challenge.");
+    expect(generatePlainReportHtml(week).html).toContain("Lessons and Challenges:");
+    expect(generateEmailHtml(week)).toContain("Lessons and Challenges:");
+  });
+
   it("removes disabled bagels from report outputs", () => {
     const settings: TrackerSettings = { trackers: DEFAULT_TRACKERS.map((tracker) => ({ ...tracker, enabled: tracker.id === "drinks" })) };
     expect(generateReport(makeWeek(), settings)).not.toContain("Bagel");

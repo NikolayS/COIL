@@ -69,7 +69,7 @@ const WEEKLY_FIELDS: [keyof WeekData["weekly"], string][] = [
   ["biggestWin",    "Biggest Win"],
   ["wins",          "Other Wins"],
   ["gratitude",     "Gratitude"],
-  ["lessons",       "Lessons"],
+  ["lessons",       "Lessons and Challenges"],
   ["focusAchieved", "Focus achieved"],
   ["focusNext",     "Focus next week"],
   ["stretchNext",   "Stretch"],
