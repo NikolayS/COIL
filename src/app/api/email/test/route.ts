@@ -1,17 +1,9 @@
+import { weekKey, addCalendarDays } from "@/lib/week-date";
 import { createClient } from "@supabase/supabase-js";
 import { generateReport, generateEmailHtml, type WeekData } from "@/lib/report";
 import { generateReportPdf } from "@/lib/generatePdf";
 import { trackerSettingsFromRow } from "@/lib/tracking";
 import { NextRequest, NextResponse } from "next/server";
-
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -37,17 +29,15 @@ export async function POST(request: NextRequest) {
   // Load saved report_email setting
   const { data: settings } = await supabase
     .from("settings")
-    .select("report_email, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
+    .select("report_email, week_start, timezone, tracker_definitions, bagels_enabled, steps10k_enabled, cold_plunge_enabled, fasting_enabled")
     .eq("user_id", userId)
     .maybeSingle();
 
   // Priority: inline override > saved report_email > auth email
   const email = overrideEmail?.trim() || settings?.report_email || authEmail;
 
-  const currentMonday = getMondayOfWeek(new Date()).toISOString().slice(0, 10);
-  const prevMonday = getMondayOfWeek(
-    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  ).toISOString().slice(0, 10);
+  const currentMonday = weekKey(new Date(), settings?.week_start === "sunday" ? "sunday" : "monday", settings?.timezone ?? "UTC");
+  const prevMonday = addCalendarDays(currentMonday, -7);
 
   // Use explicit weekOf if provided, otherwise fall back to weekChoice, then current→previous
   const mondaysToTry = weekOf
@@ -79,7 +69,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No week data found" }, { status: 404 });
   }
 
-  const weekData = weekRow.data as WeekData;
+  const weekData = { ...weekRow.data as WeekData, weekOf: usedMonday };
   const trackerSettings = trackerSettingsFromRow(settings);
   const report = generateReport(weekData, trackerSettings);
   const emailSubject = `[TEST] COIL Weekly Report — Week of ${usedMonday}`;

@@ -1,17 +1,10 @@
+import { weekKey, addCalendarDays, calendarDateObject } from "@/lib/week-date";
+import { localDateInTimeZone } from "@/lib/monthly-data";
 import { createClient } from "@supabase/supabase-js";
 import { generateReport, generateEmailHtml, type WeekData } from "@/lib/report";
 import { generateReportPdf } from "@/lib/generatePdf";
 import { trackerSettingsFromRow } from "@/lib/tracking";
 import { NextRequest, NextResponse } from "next/server";
-
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export async function POST(request: NextRequest) {
   // Verify cron secret
@@ -56,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const nowDay = new Date().getDay(); // 0=Sun, 6=Sat
+  const now = new Date();
   let sent = 0;
 
   for (const setting of settings) {
@@ -67,13 +60,14 @@ export async function POST(request: NextRequest) {
 
     // week_start=monday → week ends Sunday → deliver Monday (1)
     // week_start=sunday → week ends Saturday → deliver Sunday (0)
-    const ws = (setting.week_start as string | null) ?? "monday";
+    const ws = setting.week_start === "sunday" ? "sunday" : "monday";
+    const timeZone = setting.timezone ?? "UTC";
+    const nowDay = calendarDateObject(localDateInTimeZone(now, timeZone)).getUTCDay();
     const sendOnDay = ws === "monday" ? 1 : 0;
     if (nowDay !== sendOnDay) continue;
 
-    // The completed week ended yesterday — get that week's start Monday
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const monday = getMondayOfWeek(yesterday).toISOString().slice(0, 10);
+    // Calendar arithmetic is independent of host timezone and daylight-saving offsets.
+    const monday = addCalendarDays(weekKey(now, ws, timeZone), -7);
 
     // Fetch that week's data
     const { data: weekRow } = await supabase
@@ -85,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     if (!weekRow?.data) continue;
 
-    const weekData = weekRow.data as WeekData;
+    const weekData = { ...weekRow.data as WeekData, weekOf: monday };
     const trackerSettings = trackerSettingsFromRow(setting);
     const report = generateReport(weekData, trackerSettings);
 

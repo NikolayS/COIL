@@ -69,6 +69,11 @@ jobs:
       - name: Verify RLS, privileges, and atomic rollback
         run: psql -f supabase/tests/intentional_integration.sql
 
+      - name: Verify calendar-key guard and legacy compatibility
+        run: |
+          createdb coil_calendar_test
+          psql --no-psqlrc --dbname=coil_calendar_test --set=ON_ERROR_STOP=1 --file=supabase/tests/week-calendar-key.sql
+
   # ── 2. Build (depends on unit tests passing) ────────────────────────────────
   build:
     name: Build

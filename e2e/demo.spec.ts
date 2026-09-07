@@ -37,6 +37,8 @@ async function expectRoute(page: Page, tab: string, view: string) {
 
 test.describe("Demo mode — home page", () => {
   test.beforeEach(async ({ page, context, baseURL }) => {
+    // Monthly fixtures below are July/August; do not depend on the wall clock.
+    await page.clock.setFixedTime(new Date("2026-08-10T16:00:00Z"));
     // Set demo cookie so middleware allows access without authentication
     const appURL = new URL(baseURL ?? process.env.PLAYWRIGHT_BASE_URL ?? "https://coil.5am.team");
     await context.addCookies([
@@ -145,6 +147,28 @@ test.describe("Demo mode — home page", () => {
     // Score should be at least 1 (persisted via localStorage)
     const scoreEl = page.locator("text=/^[1-9]\\d*$/").first();
     await expect(scoreEl).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("demo rollover preserves last week locally without writing to Supabase", async ({ page }) => {
+    await switchToCloseWhenAvailable(page);
+    await firstTerritoryCompletion(page).click();
+    await expect(page.getByText(/✓ saved/)).toBeVisible();
+    await page.evaluate(() => {
+      const week = JSON.parse(localStorage.getItem("coil_current_week")!);
+      week.weekOf = "2026-08-03T07:00:00.000Z";
+      week.weekly.biggestWin = "Keep last week's record";
+      localStorage.setItem("coil_current_week", JSON.stringify(week));
+    });
+    await page.reload();
+    await expect(page.getByText("demo mode", { exact: true })).toBeVisible();
+    const saved = await page.evaluate(() => ({
+      current: JSON.parse(localStorage.getItem("coil_current_week")!),
+      archive: JSON.parse(localStorage.getItem("coil_archived_weeks")!),
+    }));
+    expect(saved.current.weekOf).toBe("2026-08-10");
+    expect(saved.current.weekly.biggestWin).toBe("");
+    expect(saved.archive).toHaveLength(1);
+    expect(saved.archive[0].data.weekly.biggestWin).toBe("Keep last week's record");
   });
 
   test("Settings button is visible in demo mode", async ({ page }) => {
