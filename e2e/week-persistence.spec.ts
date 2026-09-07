@@ -18,7 +18,7 @@ async function setup(page: Page, context: BrowserContext, baseURL: string, optio
     { name: `sb-${new URL(supabaseOrigin).hostname.split(".")[0]}-auth-token`, value: `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`, url: baseURL },
   ]);
   await page.clock.setFixedTime(new Date(options.now ?? "2026-08-28T16:00:00Z"));
-  await page.route(`${supabaseOrigin}/**`, async route => {
+  await page.route(url => url.origin === supabaseOrigin && (url.pathname.startsWith("/rest/v1/") || url.pathname.startsWith("/auth/v1/")), async route => {
     const req = route.request();
     const url = new URL(req.url());
     const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS" };
