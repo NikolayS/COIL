@@ -352,6 +352,11 @@ jobs:
             docker rm coil || true
             docker rename coil-new coil
 
+            # Enable the write guard only AFTER the new app is healthy and serving.
+            # Build/health-check failures leave the old app and its write behavior intact.
+            docker exec -i supabase-db-1 psql --no-psqlrc --username=postgres --dbname=postgres --set=ON_ERROR_STOP=1 \
+              < /opt/coil/supabase/migrations/20260907_week_calendar_key.sql
+
             # Ensure cron jobs are set (idempotent)
             (crontab -l 2>/dev/null | grep -v "api/cron/"; \
               echo "0 20 * * 0 curl -s -X POST https://coil.5am.team/api/cron/weekly-email -H \"Authorization: Bearer ${COIL_APP_CRON_SECRET}\" >> /var/log/coil-cron.log 2>&1"; \

@@ -1,3 +1,4 @@
+import { calendarDateObject } from "./week-date";
 // Shared report generation — used by both client (page.tsx) and server (cron API route)
 
 import { enabledTrackers, getTrackerValue, trackerValueLabel, DEFAULT_TRACKER_SETTINGS, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "./tracking";
@@ -62,7 +63,7 @@ const DAY_LABELS: Record<string, string> = {
 const TOTAL_POSSIBLE = 35;
 
 function formatWeekOf(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 const WEEKLY_FIELDS: [keyof WeekData["weekly"], string][] = [
@@ -138,7 +139,7 @@ function trackerSummary(data: WeekData, tracker: TrackerDefinition): string {
 }
 
 export function generatePlainReport(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
-  const weekOf = new Date(data.weekOf);
+  const weekOf = calendarDateObject(data.weekOf);
   const score = calcScore(data);
   // TPM treats every \n as a paragraph gap. Entire report = one block of text.
   // Days separated by " // ", fields within a day by " | ".
@@ -197,7 +198,7 @@ function boldKey(s: string): string {
 // Returns both plain text and HTML (with <br> for soft line breaks).
 // Tiptap/ProseMirror treats pasted <br> as Shift+Enter — no paragraph gaps.
 export function generatePlainReportHtml(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): { plain: string; html: string } {
-  const weekOf = new Date(data.weekOf);
+  const weekOf = calendarDateObject(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [];
 
@@ -271,7 +272,7 @@ export function generatePlainReportHtml(data: WeekData, settings: TrackerSetting
 }
 
 export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
-  const weekOf = new Date(data.weekOf);
+  const weekOf = calendarDateObject(data.weekOf);
   const score = calcScore(data);
   const w = data.weekly;
 
@@ -354,7 +355,7 @@ export function generateEmailHtml(data: WeekData, settings: TrackerSettings = DE
 }
 
 export function generateReport(data: WeekData, settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS): string {
-  const weekOf = new Date(data.weekOf);
+  const weekOf = calendarDateObject(data.weekOf);
   const score = calcScore(data);
   const lines: string[] = [
     `# COIL Weekly Report — Week of ${formatWeekOf(weekOf)}`,

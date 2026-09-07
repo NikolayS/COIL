@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { calendarDate, calendarDateObject, addCalendarDays, weekKey, weekOffsetBetween } from "@/lib/week-date";
 import { nullableDataOrThrow } from "@/lib/supabase-result";
 import { generateReport, generatePlainReportHtml } from "@/lib/report";
 import { enabledTrackers, getTrackerValue, DEFAULT_TRACKER_SETTINGS, trackerSettingsFromJson, trackerSettingsFromRow, type TrackerDefinition, type TrackerSettings, type TrackerValue } from "@/lib/tracking";
@@ -66,7 +67,7 @@ interface DayData extends DailyIntentions {
 }
 
 interface WeekData {
-  weekOf: string; // ISO date string for Monday
+  weekOf: string; // Calendar date (YYYY-MM-DD); never a browser-local instant
   days: Record<string, DayData>; // key: "mon" | "tue" etc.
   weekly: WeeklyIntentions & {
     wins: string;
@@ -152,30 +153,19 @@ function reviewPeriodRange(
 }
 
 function getMondayOfWeek(date: Date): Date {
-  return getWeekStart(date, "monday");
+  return getWeekStart(date, "monday", Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 }
 
-function getWeekStart(date: Date, weekStart: "monday" | "sunday" = "monday"): Date {
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun, 1=Mon, ...6=Sat
-  if (weekStart === "monday") {
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-  } else {
-    // Sunday start
-    const diff = d.getDate() - day;
-    d.setDate(diff);
-  }
-  d.setHours(0, 0, 0, 0);
-  return d;
+function getWeekStart(date: Date, weekStart: "monday" | "sunday" = "monday", timeZone = "UTC"): Date {
+  return calendarDateObject(weekKey(date, weekStart, timeZone));
 }
 
 function formatWeekOf(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
-function getTodayKey(): string {
-  const day = new Date().getDay();
+function getTodayKey(timeZone = "UTC"): string {
+  const day = calendarDateObject(localDateInTimeZone(new Date(), timeZone)).getUTCDay();
   return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][day];
 }
 
@@ -201,7 +191,7 @@ function emptyDayData(): DayData {
 function emptyWeekData(monday: Date): WeekData {
   const weeklyIntentions = migrateWeeklyIntentions({});
   return {
-    weekOf: monday.toISOString(),
+    weekOf: isoDate(monday),
     days: Object.fromEntries(DAYS.map((d) => [d, emptyDayData()])),
     weekly: {
       ...weeklyIntentions,
@@ -264,7 +254,16 @@ function demoLoadCurrent(): WeekData {
   if (typeof window === "undefined") return emptyWeekData(getMondayOfWeek(new Date()));
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return migrateWeekData(JSON.parse(raw));
+    if (raw) {
+      const saved = migrateWeekData(JSON.parse(raw));
+      const current = emptyWeekData(getMondayOfWeek(new Date()));
+      if (calendarDate(saved.weekOf) === current.weekOf) return { ...saved, weekOf: current.weekOf };
+      // Demo-only rollover: never touches Supabase and never discards the previous week.
+      const previous = demoLoadArchive().filter((week) => calendarDate(week.weekOf) !== calendarDate(saved.weekOf));
+      demoSaveArchive([...previous, { weekOf: saved.weekOf, data: saved, archivedAt: new Date().toISOString() }]);
+      demoSaveCurrent(current);
+      return current;
+    }
   } catch {}
   return emptyWeekData(getMondayOfWeek(new Date()));
 }
@@ -298,7 +297,7 @@ function demoClearAll() {
 async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: AbortSignal, isPastWeek = false): Promise<string | null> {
   if (signal?.aborted) return "Timed out";
   const supabase = createClient();
-  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  const weekOf = calendarDate(data.weekOf);
   // For past weeks: preserve existing archived flag (don't reset to false)
   const row = isPastWeek
     ? { user_id: userId, week_of: weekOf, data, updated_at: new Date().toISOString() }
@@ -314,7 +313,7 @@ async function syncCurrentToSupabase(userId: string, data: WeekData, signal?: Ab
 const weekSaveQueues = new Map<string, Promise<string | null>>();
 
 function queueWeekSave(userId: string, data: WeekData, isPastWeek: boolean): Promise<string | null> {
-  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+  const weekOf = calendarDate(data.weekOf);
   const key = `${userId}:${weekOf}`;
   const previous = weekSaveQueues.get(key) ?? Promise.resolve(null);
   const next = previous.catch(() => null).then(() => syncCurrentToSupabase(userId, data, undefined, isPastWeek));
@@ -325,29 +324,21 @@ function queueWeekSave(userId: string, data: WeekData, isPastWeek: boolean): Pro
   return next;
 }
 
-function getMondayForOffset(offset: number, weekStart: "monday" | "sunday" = "monday"): Date {
-  const d = getWeekStart(new Date(), weekStart);
-  d.setDate(d.getDate() + offset * 7);
-  return d;
-}
-
-async function fetchCurrentFromSupabase(userId: string, offset = 0, weekStart: "monday" | "sunday" = "monday"): Promise<WeekData | null> {
-  const supabase = createClient();
-  const monday = getMondayForOffset(offset, weekStart).toISOString().slice(0, 10);
-  let query = supabase
+async function fetchCurrentFromSupabase(userId: string, requestedWeek: string): Promise<WeekData | null> {
+  const result = await createClient()
     .from("weeks")
-    .select("data")
+    .select("week_of, data")
     .eq("user_id", userId)
-    .eq("week_of", monday);
-  if (offset === 0) query = query.eq("archived", false);
-  const result = await query.maybeSingle();
-  const data = nullableDataOrThrow(result);
-  return data?.data ? migrateWeekData(data.data as WeekData) : null;
+    .eq("week_of", requestedWeek)
+    .maybeSingle();
+  const row = nullableDataOrThrow(result);
+  // The database key is authoritative; legacy timestamps must not change its display date.
+  return row?.data ? migrateWeekData({ ...row.data as WeekData, weekOf: row.week_of }) : null;
 }
 
-async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "sunday" = "monday"): Promise<ArchivedWeek[]> {
+async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "sunday" = "monday", timeZone = "UTC"): Promise<ArchivedWeek[]> {
   const supabase = createClient();
-  const currentWeekStart = getWeekStart(new Date(), weekStart).toISOString().slice(0, 10);
+  const currentWeekStart = weekKey(new Date(), weekStart, timeZone);
   // Show ALL past weeks (not just archived ones) — any week before this week
   const { data } = await supabase
     .from("weeks")
@@ -357,8 +348,8 @@ async function fetchArchiveFromSupabase(userId: string, weekStart: "monday" | "s
     .order("week_of", { ascending: false });
   if (!data) return [];
   return data.map((row) => ({
-    weekOf: new Date(row.week_of).toISOString(),
-    data: row.data as WeekData,
+    weekOf: row.week_of,
+    data: migrateWeekData({ ...row.data as WeekData, weekOf: row.week_of }),
     archivedAt: row.updated_at,
   }));
 }
@@ -392,15 +383,6 @@ function applyCycleToWeek(data: WeekData, cycle: CycleData | null): WeekData {
       priorities: seedWeeklyPrioritiesFromCycle(data.weekly.priorities, cycle),
     },
   };
-}
-
-async function archiveInSupabase(userId: string, data: WeekData) {
-  const supabase = createClient();
-  const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
-  await supabase.from("weeks").upsert(
-    { user_id: userId, week_of: weekOf, data, archived: true, updated_at: new Date().toISOString() },
-    { onConflict: "user_id,week_of" }
-  );
 }
 
 // ── SQL Dump Export ────────────────────────────────────────────────────────
@@ -708,10 +690,9 @@ function JournalField({
 }) {
   // Use local state to avoid React 19 controlled textarea thrashing.
   // Parent value syncs in on external changes (day switch, load);
-  // local edits propagate to parent via debounced onChange.
+  // local edits propagate immediately; persistence itself is debounced.
   const [local, setLocal] = useState(value);
   const onChangeRef = useRef(onChange);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -725,14 +706,12 @@ function JournalField({
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value;
     setLocal(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => onChangeRef.current(v), 300);
+    onChangeRef.current(v);
   };
 
   // Flush on blur so we never lose the last few chars
   const handleBlur = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    onChangeRef.current(local);
+    if (local !== value) onChangeRef.current(local);
   };
 
   return (
@@ -752,8 +731,8 @@ function JournalField({
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekOffset = 0, weekStart = "monday" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; phase: DailyPhase; onPhaseChange: (phase: DailyPhase) => void; weekOffset?: number; weekStart?: "monday" | "sunday" }) {
-  const todayKey = getTodayKey();
+function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekOffset = 0, weekStart = "monday", timeZone = "UTC" }: { data: WeekData; onChange: (d: WeekData | ((prev: WeekData | null) => WeekData | null)) => void; trackerSettings: TrackerSettings; phase: DailyPhase; onPhaseChange: (phase: DailyPhase) => void; weekOffset?: number; weekStart?: "monday" | "sunday"; timeZone?: string }) {
+  const todayKey = getTodayKey(timeZone);
   const [activeDay, setActiveDay] = useState(weekOffset < 0 ? "sun" : todayKey);
   const [editUnlocked, setEditUnlocked] = useState<Record<string, boolean>>({});
 
@@ -1224,7 +1203,7 @@ function ExportTab({
       const res = await fetch("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, weekOf: new Date(data.weekOf).toISOString().slice(0, 10), includePdf: true }),
+        body: JSON.stringify({ userId: user.id, weekOf: calendarDate(data.weekOf), includePdf: true }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -1303,7 +1282,7 @@ function ExportTab({
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[--text-muted] leading-relaxed mb-4">
-          Week of {new Date(data.weekOf).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}. Use AI Chat format for Claude/ChatGPT, or Rich Copy for TPM and similar apps.
+          Week of {formatWeekOf(calendarDateObject(data.weekOf))}. Use AI Chat format for Claude/ChatGPT, or Rich Copy for TPM and similar apps.
         </p>
         <button
           onClick={handleCopy}
@@ -1324,7 +1303,7 @@ function ExportTab({
         {user && (
           <button
             onClick={() => {
-              const weekOf = new Date(data.weekOf).toISOString().slice(0, 10);
+              const weekOf = calendarDate(data.weekOf);
               window.location.href = `/api/pdf/download?weekOf=${weekOf}`;
             }}
             className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
@@ -1490,7 +1469,7 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
               className="w-full flex items-center justify-between px-4 py-4"
             >
               <div className="text-left">
-                <p className="text-sm font-medium">Week of {formatWeekOf(new Date(week.weekOf))}</p>
+                <p className="text-sm font-medium">Week of {formatWeekOf(calendarDateObject(week.weekOf))}</p>
                 <p className="text-xs font-mono text-[--text-muted] mt-0.5">{score}/{TOTAL_POSSIBLE} points</p>
               </div>
               <div className="flex items-center gap-3">
@@ -1768,7 +1747,7 @@ function ReviewTab({
 }: {
   user: User | null;
   data: WeekData;
-  onChange: (data: WeekData) => void;
+  onChange: (data: WeekData | ((previous: WeekData | null) => WeekData | null)) => void;
   archive: ArchivedWeek[];
   trackerSettings: TrackerSettings;
   weekStart: "monday" | "sunday";
@@ -2052,15 +2031,18 @@ function ReviewTab({
       const weekEndDate = new Date(weekStartDate);
       weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
       if (isoDate(weekStartDate) <= planRange.endsOn && isoDate(weekEndDate) >= planRange.startsOn) {
-        onChange({
-          ...data,
-          weekly: {
-            ...data.weekly,
-            priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
-              key,
-              cycle.territories[key].outcome.trim() || data.weekly.priorities[key],
-            ])) as Record<TerritoryKey, string>,
-          },
+        onChange((current) => {
+          if (!current || calendarDate(current.weekOf) !== calendarDate(data.weekOf)) return current;
+          return {
+            ...current,
+            weekly: {
+              ...current.weekly,
+              priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+                key,
+                cycle.territories[key].outcome.trim() || current.weekly.priorities[key],
+              ])) as Record<TerritoryKey, string>,
+            },
+          };
         });
       }
     }
@@ -2371,15 +2353,11 @@ export default function CoilApp() {
   const initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const initTab = parseTab(initParams.get("tab"));
   // "week" param is an ISO date string (e.g. "2026-02-23"), not a relative offset
-  const initWeekDate = initParams.get("week");
-  const initOffset = (() => {
-    if (!initWeekDate) return 0;
-    // Convert ISO date → offset relative to current week
-    const target = new Date(initWeekDate + "T12:00:00Z");
-    const current = getWeekStart(new Date(), "monday"); // rough — weekStart not loaded yet
-    const diffMs = target.getTime() - current.getTime();
-    return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  const initWeekDate = (() => {
+    const value = initParams.get("week");
+    try { return value ? calendarDate(value) : null; } catch { return null; }
   })();
+  const initOffset = initWeekDate ? weekOffsetBetween(weekKey(new Date(), "monday", "UTC"), initWeekDate) : 0;
   const initView = resolveView(initTab, initParams.get("view") ?? initParams.get("subtab") ?? initParams.get("phase"), initOffset);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
@@ -2393,15 +2371,19 @@ export default function CoilApp() {
   // null = loading (auth check pending); WeekData = ready
   const [weekData, setWeekData] = useState<WeekData | null>(null);
   const [archive, setArchive] = useState<ArchivedWeek[]>([]);
-  const [weekOffset, setWeekOffset] = useState(initOffset); // 0 = current week, -1 = last week, etc.
-  const weekOffsetRef = useRef(initOffset); // mirror for use in stale closures
-  const weekOffsetInitialized = useRef(initOffset !== 0); // skip initial nav effect run (auth effect handles it)
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(initWeekDate);
+  const [authReady, setAuthReady] = useState(false);
+  const currentWeek = weekKey(new Date(), weekStart, timeZone);
+  const requestedWeek = selectedWeek ?? currentWeek;
+  const weekOffset = weekOffsetBetween(currentWeek, requestedWeek);
   const urlWriteModeRef = useRef<"replace" | "push">("replace");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "timeout">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [weekLoadError, setWeekLoadError] = useState<string | null>(null);
-  const isDemo = user === null && weekData !== null;
   const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pendingWeekEdits = useRef(new Map<string, WeekData>());
+  const weekDataRef = useRef(weekData);
+  weekDataRef.current = weekData;
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -2463,30 +2445,7 @@ export default function CoilApp() {
         setWeekStart(ws);
         setTimeZone(typeof settingsData?.timezone === "string" ? settingsData.timezone : "UTC");
         setTrackerSettings(trackerSettingsFromRow(settingsData));
-        const resolvedOffset = initWeekDate ? (() => {
-          const target = new Date(`${initWeekDate}T12:00:00Z`);
-          const current = getWeekStart(new Date(), ws);
-          return Math.round((target.getTime() - current.getTime()) / (7 * 24 * 60 * 60 * 1000));
-        })() : 0;
-        weekOffsetRef.current = resolvedOffset;
-        weekOffsetInitialized.current = true;
-        setWeekOffset(resolvedOffset);
-        const requestedWeek = isoDate(getMondayForOffset(resolvedOffset, ws));
-        try {
-          const [remoteWeek, remoteArchive, activeCycle] = await Promise.all([
-            fetchCurrentFromSupabase(user.id, resolvedOffset, ws),
-            fetchArchiveFromSupabase(user.id, ws),
-            fetchCycleForWeek(user.id, requestedWeek),
-          ]);
-          setWeekLoadError(null);
-          setWeekData(applyCycleToWeek(
-            remoteWeek ?? emptyWeekData(getMondayForOffset(resolvedOffset, ws)),
-            activeCycle,
-          ));
-          setArchive(remoteArchive);
-        } catch (error) {
-          setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
-        }
+        setAuthReady(true);
       } else {
         // Demo/guest: localStorage only, never touches Supabase.
         setUser(null);
@@ -2494,6 +2453,7 @@ export default function CoilApp() {
         setTrackerSettings(trackerSettingsFromJson(localStorage.getItem("coil_tracker_settings")));
         setWeekData(demoLoadCurrent());
         setArchive(demoLoadArchive());
+        setAuthReady(true);
       }
     }).catch((error) => {
       setWeekLoadError(error instanceof Error ? error.message : "Could not verify authentication");
@@ -2507,8 +2467,8 @@ export default function CoilApp() {
     params.set("view", activeView);
     params.delete("subtab");
     params.delete("phase");
-    if (weekOffset !== 0) {
-      params.set("week", isoDate(getMondayForOffset(weekOffset, weekStart)));
+    if (selectedWeek) {
+      params.set("week", selectedWeek);
     } else {
       params.delete("week");
     }
@@ -2520,26 +2480,22 @@ export default function CoilApp() {
     if (newUrl !== currentUrl) {
       window.history[writeMode === "push" ? "pushState" : "replaceState"](null, "", newUrl);
     }
-  }, [activeTab, activeView, weekOffset, weekStart]);
+  }, [activeTab, activeView, selectedWeek]);
 
   useEffect(() => {
     const restoreUrlState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = parseTab(params.get("tab"));
-      const weekDate = params.get("week");
-      const offset = weekDate
-        ? Math.round((new Date(`${weekDate}T12:00:00Z`).getTime() - getWeekStart(new Date(), weekStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
-        : 0;
+      let weekDate: string | null = null;
+      try { weekDate = params.get("week") ? calendarDate(params.get("week")!) : null; } catch { /* Invalid links open the current week. */ }
+      const offset = weekDate ? weekOffsetBetween(currentWeek, weekDate) : 0;
       setActiveTab(tab);
       setActiveView(resolveView(tab, params.get("view") ?? params.get("subtab") ?? params.get("phase"), offset));
-      if (offset !== weekOffsetRef.current) {
-        weekOffsetRef.current = offset;
-        setWeekOffset(offset);
-      }
+      setSelectedWeek(weekDate);
     };
     window.addEventListener("popstate", restoreUrlState);
     return () => window.removeEventListener("popstate", restoreUrlState);
-  }, [weekStart]);
+  }, [currentWeek]);
 
   const selectTab = (tab: TabKey) => {
     const nextView = defaultViewForTab(tab, weekOffset);
@@ -2558,30 +2514,30 @@ export default function CoilApp() {
   const navigateWeek = (offset: number) => {
     if (offset === weekOffset) return;
     urlWriteModeRef.current = "push";
-    weekOffsetRef.current = offset;
-    setWeekOffset(offset);
+    setSelectedWeek(offset === 0 ? null : addCalendarDays(currentWeek, offset * 7));
     setActiveView(defaultViewForTab(activeTab, offset));
   };
 
-  // Reload week data when offset changes (week navigation)
+  // Loading is read-only. Ignore late responses after navigation to another week.
   useEffect(() => {
-    if (!weekOffsetInitialized.current) { weekOffsetInitialized.current = true; return; }
-    if (!user) return;
+    if (!authReady || !user) return;
+    let cancelled = false;
+    const pendingAtLoad = pendingWeekEdits.current.get(requestedWeek);
     setWeekData(null);
-    const requestedWeek = isoDate(getMondayForOffset(weekOffset, weekStart));
+    setWeekLoadError(null);
     Promise.all([
-      fetchCurrentFromSupabase(user.id, weekOffset, weekStart),
+      fetchCurrentFromSupabase(user.id, requestedWeek),
       fetchCycleForWeek(user.id, requestedWeek),
-    ]).then(([week, cycle]) => {
-      setWeekLoadError(null);
-      setWeekData(applyCycleToWeek(
-        week ?? emptyWeekData(getMondayForOffset(weekOffset, weekStart)),
-        cycle,
-      ));
+      fetchArchiveFromSupabase(user.id, weekStart, timeZone),
+    ]).then(([week, cycle, pastWeeks]) => {
+      if (cancelled) return;
+      setWeekData(pendingWeekEdits.current.get(requestedWeek) ?? pendingAtLoad ?? applyCycleToWeek(week ?? emptyWeekData(calendarDateObject(requestedWeek)), cycle));
+      setArchive(pastWeeks);
     }).catch((error) => {
-      setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
+      if (!cancelled) setWeekLoadError(error instanceof Error ? error.message : "Could not load week");
     });
-  }, [weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; };
+  }, [authReady, user, requestedWeek, weekStart, timeZone]);
 
   const handleSignOut = async () => {
     document.cookie = "coil_demo=; path=/; max-age=0";
@@ -2590,71 +2546,42 @@ export default function CoilApp() {
     window.location.href = "/login";
   };
 
-  // Auto-archive on week boundary (runs once data is loaded, only when viewing current week)
-  useEffect(() => {
-    if (!weekData) return;
-    if (weekOffsetRef.current !== 0) return; // don't auto-archive when browsing past weeks
-    const currentMonday = getWeekStart(new Date(), weekStart).toISOString();
-    if (weekData.weekOf !== currentMonday) {
-      const hasContent = calcScore(weekData) > 0 ||
-        Object.values(weekData.weekly).some((value) => {
-          if (typeof value === "string") return value.trim() !== "";
-          if (Array.isArray(value)) return value.some((item) => typeof item === "string" && item.trim() !== "");
-          return value && typeof value === "object"
-            ? Object.values(value).some((item) => typeof item === "string" && item.trim() !== "")
-            : false;
-        }) ||
-        Object.values(weekData.days).some(d =>
-          d.journal.trim() !== "" || d.reflection.trim() !== "" || d.tomorrowPriority.trim() !== "" ||
-          Object.values(d.commitments).some((commitment) => commitment.trim() !== "") ||
-          Object.values(d.basics).some(Boolean) ||
-          (d.drinks ?? 0) > 0 || (d.bagels ?? 0) > 0 || d.steps10k || d.coldPlunge || d.fasting ||
-          Object.values(d.trackers ?? {}).some(Boolean) || d.gratitude.trim() !== "" || d.wins.trim() !== ""
-        );
-      if (hasContent) {
-        const newArchive: ArchivedWeek[] = [
-          ...archive,
-          { weekOf: weekData.weekOf, data: weekData, archivedAt: new Date().toISOString() },
-        ];
-        setArchive(newArchive);
-        if (isDemo) demoSaveArchive(newArchive);
-        if (user) archiveInSupabase(user.id, weekData);
-      }
-      const fresh = emptyWeekData(getWeekStart(new Date(), weekStart));
-      setWeekData(fresh);
-      if (isDemo) demoSaveCurrent(fresh);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekData === null]);
-
-  // Auto-save: demo → localStorage; auth → Supabase (1.5s debounce)
-  useEffect(() => {
-    if (!weekData) return;
-    if (isDemo) {
-      demoSaveCurrent(weekData);
+  // No effect writes loaded state. Only an actual user edit can schedule a save.
+  const editWeek = useCallback((update: WeekData | ((previous: WeekData | null) => WeekData | null)) => {
+    const previous = weekDataRef.current;
+    const next = typeof update === "function" ? update(previous) : update;
+    if (!previous || !next || JSON.stringify(previous) === JSON.stringify(next)) return;
+    // A delayed callback may belong to a different week. Never relabel its snapshot.
+    if (calendarDate(next.weekOf) !== calendarDate(previous.weekOf)) return;
+    const dataToSave = { ...next, weekOf: calendarDate(previous.weekOf) };
+    weekDataRef.current = dataToSave;
+    setWeekData(dataToSave);
+    if (!user) {
+      demoSaveCurrent(dataToSave);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 1200);
       return;
     }
-    if (!user) return;
-    const dataToSave = weekData;
-    const saveKey = new Date(dataToSave.weekOf).toISOString().slice(0, 10);
+    const saveKey = dataToSave.weekOf;
+    const isPastWeek = saveKey !== currentWeek;
+    pendingWeekEdits.current.set(saveKey, dataToSave);
     const priorTimer = syncTimers.current.get(saveKey);
     if (priorTimer) clearTimeout(priorTimer);
     const timer = setTimeout(() => {
       syncTimers.current.delete(saveKey);
       setSaveStatus("saving");
-      queueWeekSave(user.id, dataToSave, weekOffset !== 0).then((err) => {
+      queueWeekSave(user.id, dataToSave, isPastWeek).then((err) => {
         if (err) {
           setSaveError(err);
           setSaveStatus("error");
           setTimeout(() => setSaveStatus("idle"), 4000);
         } else {
+          if (pendingWeekEdits.current.get(saveKey) === dataToSave) pendingWeekEdits.current.delete(saveKey);
           setSaveError(null);
           setSaveStatus("saved");
           setTimeout(() => setSaveStatus("idle"), 1500);
           // Update in-memory archive if editing a past week
-          if (weekOffset !== 0) {
+          if (isPastWeek) {
             setArchive(prev => {
               const wOf = dataToSave.weekOf;
               const exists = prev.some(a => a.weekOf === wOf);
@@ -2673,7 +2600,7 @@ export default function CoilApp() {
       });
     }, 1500);
     syncTimers.current.set(saveKey, timer);
-  }, [weekData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, currentWeek]);
 
   // Loading state — auth check pending
   if (!weekData) {
@@ -2692,7 +2619,7 @@ export default function CoilApp() {
   }
 
   const score = calcScore(weekData);
-  const weekOf = formatWeekOf(new Date(weekData.weekOf));
+  const weekOf = formatWeekOf(calendarDateObject(weekData.weekOf));
 
   return (
     <div className="min-h-screen bg-[--bg] flex flex-col">
@@ -2801,16 +2728,16 @@ export default function CoilApp() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-5 md:px-8 py-5">
           {activeTab === "today" && (
-            <DailyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} phase={activeView === "close" ? "close" : "plan"} onPhaseChange={selectView} weekOffset={weekOffset} weekStart={weekStart} />
+            <DailyTab data={weekData} onChange={editWeek} trackerSettings={trackerSettings} phase={activeView === "close" ? "close" : "plan"} onPhaseChange={selectView} weekOffset={weekOffset} weekStart={weekStart} timeZone={timeZone} />
           )}
           {activeTab === "week" && (
-            <WeeklyTab data={weekData} onChange={setWeekData} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
+            <WeeklyTab data={weekData} onChange={editWeek} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
           )}
           {activeTab === "plan" && (
             <PlanTab user={user} timeZone={timeZone} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} onChange={setWeekData} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
+            <ReviewTab user={user} data={weekData} onChange={editWeek} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
           )}
         </div>
       </div>
