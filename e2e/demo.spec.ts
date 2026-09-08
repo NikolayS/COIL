@@ -240,7 +240,7 @@ test.describe("Demo mode — home page", () => {
 
   test("locked past-day controls are disabled for keyboard as well as pointer input", async ({ page }) => {
     await page.getByRole("button", { name: "Previous week" }).click();
-    await page.getByRole("button", { name: /^Mon 0$/ }).click();
+    await page.getByRole("button", { name: /^Mon, / }).click();
     const locked = page.locator("fieldset:disabled").first();
     await expect(locked).toBeVisible();
     await expect(locked.locator("input, textarea, button").first()).toBeDisabled();
