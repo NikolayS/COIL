@@ -842,7 +842,11 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
               >
                 {DAY_LABELS[day].slice(0, 3)}
               </span>
-              <time dateTime={dateForDay(day)} className="text-xs font-mono text-[--text] mb-1 whitespace-nowrap">
+              <time
+                dateTime={dateForDay(day)}
+                className="text-[10px] font-mono mb-1 whitespace-nowrap"
+                style={{ color: isActive ? "var(--gold)" : "var(--text-dim)" }}
+              >
                 {formatDayDate(day)}
               </time>
               <span
