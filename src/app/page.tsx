@@ -767,6 +767,10 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
   const orderedDays = weekStart === "sunday"
     ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
     : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const dateForDay = (day: string) => addCalendarDays(data.weekOf, orderedDays.indexOf(day));
+  const formatDayDate = (day: string, full = false) => calendarDateObject(dateForDay(day)).toLocaleDateString("en-US", {
+    timeZone: "UTC", month: "short", day: "numeric", ...(full ? { year: "numeric" as const } : {}),
+  });
   const previousDayIndex = orderedDays.indexOf(activeDay) - 1;
   const carriedPriority = previousDayIndex >= 0
     ? data.days[orderedDays[previousDayIndex]]?.tomorrowPriority?.trim()
@@ -820,6 +824,8 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
           return (
             <button
               key={day}
+              aria-label={`${DAY_LABELS[day]}, ${formatDayDate(day, true)}`}
+              aria-pressed={isActive}
               onClick={() => {
                 setActiveDay(day);
                 onPhaseChange(defaultDailyPhase(daysAgo(day)));
@@ -836,6 +842,9 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
               >
                 {DAY_LABELS[day].slice(0, 3)}
               </span>
+              <time dateTime={dateForDay(day)} className="text-xs font-mono text-[--text] mb-1 whitespace-nowrap">
+                {formatDayDate(day)}
+              </time>
               <span
                 className="font-mono text-sm font-medium"
                 style={{ color: isActive ? "var(--gold)" : score > 0 ? "var(--text)" : "var(--text-faint)" }}
@@ -851,7 +860,7 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
       {/* Day score */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase">
-          {phase === "plan" ? "Today's commitments" : "Commitment score"} — {DAY_LABELS[activeDay]}
+          {phase === "plan" ? "Today's commitments" : "Commitment score"} — {DAY_LABELS[activeDay]}, {formatDayDate(activeDay, true)}
         </p>
         <span className="font-mono text-sm" style={{color:"var(--gold)"}}>{dayScore}/5</span>
       </div>
