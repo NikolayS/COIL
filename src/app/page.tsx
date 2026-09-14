@@ -1314,17 +1314,17 @@ function ExportTab({
           {copiedPlain ? "Copied!" : "Rich Copy (for TPM)"}
         </button>
         {user && (
-          <button
-            onClick={() => {
-              const weekOf = calendarDate(data.weekOf);
-              window.location.href = `/api/pdf/download?weekOf=${weekOf}`;
-            }}
+          <a
+            href={`/api/pdf/download?weekOf=${calendarDate(data.weekOf)}`}
+            download={`coil-${calendarDate(data.weekOf)}.pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
             style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
           >
             <Download size={16} />
             Download PDF
-          </button>
+          </a>
         )}
         {user && (
           <div className="mt-2">
