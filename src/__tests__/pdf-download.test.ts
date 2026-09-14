@@ -64,6 +64,18 @@ describe("weekly PDF saving", () => {
     await expect(fetchWeeklyPdf("2026-09-07")).rejects.toThrow("Unauthorized");
   });
 
+  it("rejects a successful redirect to the login page", async () => {
+    const response = new Response("<html>Login</html>");
+    Object.defineProperty(response, "redirected", { value: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    await expect(fetchWeeklyPdf("2026-09-07")).rejects.toThrow("sign in again");
+  });
+
+  it("rejects a 200 HTML response even without a redirect", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>Login</html>")));
+    await expect(fetchWeeklyPdf("2026-09-07")).rejects.toThrow("did not return a PDF");
+  });
+
   it("passes cancellation to the fetch", async () => {
     const controller = new AbortController();
     controller.abort();
