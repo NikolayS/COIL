@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { WeeklyPdfDownload } from "@/components/WeeklyPdfDownload";
 import { calendarDate, calendarDateObject, addCalendarDays, weekKey, weekOffsetBetween } from "@/lib/week-date";
 import { nullableDataOrThrow } from "@/lib/supabase-result";
 import { generateReport, generatePlainReportHtml } from "@/lib/report";
@@ -1026,7 +1027,7 @@ function DailyTab({ data, onChange, trackerSettings, phase, onPhaseChange, weekO
   );
 }
 
-function WeeklyTab({ data, onChange, trackerSettings, user, phase, onPhaseChange }: { data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; phase: "plan" | "review" | "report"; onPhaseChange: (phase: "plan" | "review" | "report") => void }) {
+function WeeklyTab({ pdfReady, data, onChange, trackerSettings, user, phase, onPhaseChange }: { pdfReady: boolean; data: WeekData; onChange: (d: WeekData) => void; trackerSettings: TrackerSettings; user: User | null; phase: "plan" | "review" | "report"; onPhaseChange: (phase: "plan" | "review" | "report") => void }) {
   const updateWeekly = (patch: Partial<WeekData["weekly"]>) => {
     onChange({ ...data, weekly: { ...data.weekly, ...patch } });
   };
@@ -1175,17 +1176,19 @@ function WeeklyTab({ data, onChange, trackerSettings, user, phase, onPhaseChange
           </details>
         </>
       ) : (
-        <ExportTab data={data} user={user} trackerSettings={trackerSettings} />
+        <ExportTab pdfReady={pdfReady} data={data} user={user} trackerSettings={trackerSettings} />
       )}
     </div>
   );
 }
 
 function ExportTab({
+  pdfReady,
   data,
   user,
   trackerSettings,
 }: {
+  pdfReady: boolean;
   data: WeekData;
   user: User | null;
   trackerSettings: TrackerSettings;
@@ -1314,17 +1317,7 @@ function ExportTab({
           {copiedPlain ? "Copied!" : "Rich Copy (for TPM)"}
         </button>
         {user && (
-          <a
-            href={`/api/pdf/download?weekOf=${calendarDate(data.weekOf)}`}
-            download={`coil-${calendarDate(data.weekOf)}.pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2.5 py-4 mt-2 rounded-2xl font-mono text-sm tracking-[0.1em] uppercase font-medium border transition-all duration-200 active:scale-[0.98]"
-            style={{ borderColor: "var(--border)", color: "var(--text-muted)", backgroundColor: "transparent" }}
-          >
-            <Download size={16} />
-            Download PDF
-          </a>
+          <WeeklyPdfDownload ready={pdfReady} key={`${user.id}-${calendarDate(data.weekOf)}`} weekOf={calendarDate(data.weekOf)} />
         )}
         {user && (
           <div className="mt-2">
@@ -1748,6 +1741,7 @@ const QUARTERLY_REVIEW_PROMPTS = [
 ] as const;
 
 function ReviewTab({
+  pdfReady,
   user,
   data,
   onChange,
@@ -1758,6 +1752,7 @@ function ReviewTab({
   monthlyPhase,
   onMonthlyPhaseChange,
 }: {
+  pdfReady: boolean;
   user: User | null;
   data: WeekData;
   onChange: (data: WeekData | ((previous: WeekData | null) => WeekData | null)) => void;
@@ -1772,6 +1767,7 @@ function ReviewTab({
   const localToday = localDateInTimeZone(now, timeZone);
   const localYear = Number(localToday.slice(0, 4));
   const localMonthIndex = Number(localToday.slice(5, 7)) - 1;
+  const [exportsOpen, setExportsOpen] = useState(false);
   const defaultReviewMonth = previousMonthKeyInTimeZone(now, timeZone);
   const [type, setType] = useState<ReviewType>("month");
   const [month, setMonth] = useState(defaultReviewMonth);
@@ -2334,9 +2330,9 @@ function ReviewTab({
           )}
         </div>
       ) : (
-        <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
+        <details open={exportsOpen} onToggle={(event) => setExportsOpen(event.currentTarget.open)} className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
           <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">Share & exports</summary>
-          <div className="mt-5"><ExportTab data={data} user={user} trackerSettings={trackerSettings} /></div>
+          {exportsOpen && <div className="mt-5"><ExportTab pdfReady={pdfReady} data={data} user={user} trackerSettings={trackerSettings} /></div>}
         </details>
       )}
 
@@ -2744,13 +2740,13 @@ export default function CoilApp() {
             <DailyTab data={weekData} onChange={editWeek} trackerSettings={trackerSettings} phase={activeView === "close" ? "close" : "plan"} onPhaseChange={selectView} weekOffset={weekOffset} weekStart={weekStart} timeZone={timeZone} />
           )}
           {activeTab === "week" && (
-            <WeeklyTab data={weekData} onChange={editWeek} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
+            <WeeklyTab pdfReady={!pendingWeekEdits.current.has(calendarDate(weekData.weekOf))} data={weekData} onChange={editWeek} trackerSettings={trackerSettings} user={user} phase={activeView === "review" || activeView === "report" ? activeView : "plan"} onPhaseChange={selectView} />
           )}
           {activeTab === "plan" && (
             <PlanTab user={user} timeZone={timeZone} />
           )}
           {activeTab === "review" && (
-            <ReviewTab user={user} data={weekData} onChange={editWeek} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
+            <ReviewTab pdfReady={!pendingWeekEdits.current.has(calendarDate(weekData.weekOf))} user={user} data={weekData} onChange={editWeek} archive={archive} trackerSettings={trackerSettings} weekStart={weekStart} timeZone={timeZone} monthlyPhase={activeView === "plan" ? "plan" : "review"} onMonthlyPhaseChange={selectView} />
           )}
         </div>
       </div>
