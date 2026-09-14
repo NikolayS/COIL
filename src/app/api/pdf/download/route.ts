@@ -31,8 +31,11 @@ export async function GET(req: Request) {
   const pdfBytes = await generateReportPdf(row.data as WeekData, trackerSettingsFromRow(settings));
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
-      "Content-Type": "application/pdf",
+      // Serve as a binary attachment so Safari does not select its PDF viewer.
+      "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="coil-${weekOf}.pdf"`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, no-store",
     },
   });
 }
