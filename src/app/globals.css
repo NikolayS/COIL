@@ -412,6 +412,89 @@ html[data-palette="iron"][data-theme="light"] {
   --shadow-card: 0 1px 4px rgba(0,10,20,0.1), 0 1px 2px rgba(0,10,20,0.06);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   PINK THEME — blush and raspberry by day, plum and soft pink by night
+   ══════════════════════════════════════════════════════════════ */
+
+html[data-palette="pink"][data-theme="dark"],
+html[data-palette="pink"]:not([data-theme="light"]) {
+  --gold: #f4a3c3;
+  --gold-dim: #b85c82;
+  --gold-bg: rgba(244, 163, 195, 0.08);
+  --gold-bg-hover: rgba(244, 163, 195, 0.14);
+  --gold-border: rgba(244, 163, 195, 0.22);
+  --gold-border-strong: rgba(244, 163, 195, 0.38);
+  --bg: #1d0f18;
+  --bg-card: #291520;
+  --bg-card-hover: #341b29;
+  --bg-input: #23121c;
+  --bg-elevated: #3a1e2e;
+  --border: #4a2638;
+  --border-subtle: #351b29;
+  --text: #f8e8ef;
+  --text-secondary: #ddb8c8;
+  --text-muted: #b8899d;
+  --text-dim: #96677b;
+  --text-faint: #785064;
+
+  --self: #4a9e6b;
+  --self-bg: rgba(74, 158, 107, 0.1);
+  --self-border: rgba(74, 158, 107, 0.25);
+  --health: #c85555;
+  --health-bg: rgba(200, 85, 85, 0.1);
+  --health-border: rgba(200, 85, 85, 0.25);
+  --relationships: #c9873a;
+  --relationships-bg: rgba(201, 135, 58, 0.1);
+  --relationships-border: rgba(201, 135, 58, 0.25);
+  --wealth: #4a7fc1;
+  --wealth-bg: rgba(74, 127, 193, 0.1);
+  --wealth-border: rgba(74, 127, 193, 0.25);
+  --business: #8b5cf6;
+  --business-bg: rgba(139, 92, 246, 0.1);
+  --business-border: rgba(139, 92, 246, 0.25);
+
+  --shadow-card: 0 2px 10px rgba(20,0,12,0.55), 0 1px 4px rgba(20,0,12,0.4);
+}
+
+html[data-palette="pink"][data-theme="light"] {
+  --gold: #a61e5c;
+  --gold-dim: #d35f91;
+  --gold-bg: rgba(166, 30, 92, 0.07);
+  --gold-bg-hover: rgba(166, 30, 92, 0.13);
+  --gold-border: rgba(166, 30, 92, 0.22);
+  --gold-border-strong: rgba(166, 30, 92, 0.38);
+  --bg: #fff0f5;
+  --bg-card: #fff8fb;
+  --bg-card-hover: #f9e2eb;
+  --bg-input: #f6dce7;
+  --bg-elevated: #fffafd;
+  --border: #e4b5c8;
+  --border-subtle: #f0cfdb;
+  --text: #2b101e;
+  --text-secondary: #5b3043;
+  --text-muted: #7d4b61;
+  --text-dim: #9b6a7f;
+  --text-faint: #b98fa1;
+
+  --self: #2d8050;
+  --self-bg: rgba(45, 128, 80, 0.08);
+  --self-border: rgba(45, 128, 80, 0.2);
+  --health: #b03030;
+  --health-bg: rgba(176, 48, 48, 0.08);
+  --health-border: rgba(176, 48, 48, 0.2);
+  --relationships: #a86020;
+  --relationships-bg: rgba(168, 96, 32, 0.08);
+  --relationships-border: rgba(168, 96, 32, 0.2);
+  --wealth: #2c5fa0;
+  --wealth-bg: rgba(44, 95, 160, 0.08);
+  --wealth-border: rgba(44, 95, 160, 0.2);
+  --business: #6b3fd4;
+  --business-bg: rgba(107, 63, 212, 0.08);
+  --business-border: rgba(107, 63, 212, 0.2);
+
+  --shadow-card: 0 1px 4px rgba(80,10,40,0.1), 0 1px 2px rgba(80,10,40,0.06);
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
