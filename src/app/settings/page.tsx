@@ -79,7 +79,7 @@ function SettingsInner() {
   const [loading, setLoading] = useState(true);
   // ── Appearance (theme + palette) — local only, not saved to Supabase ──
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron" | "pink">("gold");
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -95,7 +95,7 @@ function SettingsInner() {
   useEffect(() => {
     const savedTheme = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(savedTheme);
-    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron" | "pink") || "gold";
     setPalette(savedPalette);
   }, []);
 
@@ -105,18 +105,19 @@ function SettingsInner() {
     localStorage.setItem("coil_theme", t);
   };
 
-  const handlePalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
+  const handlePalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron" | "pink") => {
     setPalette(p);
     applyPalette(p);
     localStorage.setItem("coil_palette", p);
   };
 
-  const PALETTES: { id: "gold" | "ocean" | "midnight" | "ember" | "iron"; label: string; darkBg: string; lightBg: string; darkAccent: string; lightAccent: string }[] = [
+  const PALETTES: { id: "gold" | "ocean" | "midnight" | "ember" | "iron" | "pink"; label: string; darkBg: string; lightBg: string; darkAccent: string; lightAccent: string }[] = [
     { id: "gold",     label: "Gold",     darkBg: "#1a1a18", lightBg: "#f5f2ec", darkAccent: "#c9a84c", lightAccent: "#9a7230" },
     { id: "ocean",    label: "Ocean",    darkBg: "#0a1628", lightBg: "#d6e8f5", darkAccent: "#38b2e0", lightAccent: "#0e6fa0" },
     { id: "midnight", label: "Midnight", darkBg: "#100c1e", lightBg: "#e0d8f8", darkAccent: "#a78bfa", lightAccent: "#5b21b6" },
     { id: "ember",    label: "Ember",    darkBg: "#160a06", lightBg: "#f5ede8", darkAccent: "#c24b2a", lightAccent: "#b03a1e" },
     { id: "iron",     label: "Iron",     darkBg: "#0e1014", lightBg: "#e8ecf2", darkAccent: "#8a9bb0", lightAccent: "#4a6080" },
+    { id: "pink",     label: "Pink",     darkBg: "#1d0f18", lightBg: "#fff0f5", darkAccent: "#f4a3c3", lightAccent: "#a61e5c" },
   ];
 
   const [saving, setSaving] = useState(false);
@@ -366,7 +367,7 @@ function SettingsInner() {
             {/* Theme swatches */}
             <div>
               <p className="text-xs text-[--text-dim] mb-3">Color theme</p>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                 {PALETTES.map((p) => {
                   const isActive = palette === p.id;
                   const isDark = theme === "dark" || (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
