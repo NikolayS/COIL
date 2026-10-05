@@ -367,8 +367,9 @@ export async function generateConsolidatedReportPdf(
   weeks: WeekData[],
   period: { label: string; start: string; end: string },
   settings: TrackerSettings = DEFAULT_TRACKER_SETTINGS,
+  review?: { prompts: readonly (readonly [string, string])[]; responses: Record<string, string> },
 ): Promise<Uint8Array> {
-  if (weeks.length === 0) throw new Error("At least one week is required");
+  if (weeks.length === 0 && !review) throw new Error("At least one week is required");
 
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
@@ -399,6 +400,25 @@ export async function generateConsolidatedReportPdf(
   cover.drawText("Reports are ordered chronologically, oldest first.", {
     x: margin, y: 520, font: regular, size: 10, color: COLORS.mid,
   });
+
+  if (review) {
+    let page = doc.addPage([595, 842]);
+    let y = 770;
+    const drawLines = (value: string, heading = false) => {
+      const font = heading ? bold : regular;
+      for (const line of wrapPdfText(value, 487, (text) => font.widthOfTextAtSize(text, 11))) {
+        if (y < 54) { page = doc.addPage([595, 842]); y = 770; }
+        page.drawText(line, { x: margin, y, font, size: 11, color: COLORS.dark });
+        y -= 16;
+      }
+      y -= 10;
+    };
+    drawLines(`${period.label} — Review answers`, true);
+    for (const [key, prompt] of review.prompts) {
+      drawLines(prompt, true);
+      drawLines(review.responses[key] || "No answer recorded.");
+    }
+  }
 
   for (const week of weeks) {
     const weeklyPdf = await PDFDocument.load(await generateReportPdf(week, settings));

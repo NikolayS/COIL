@@ -82,7 +82,7 @@ describe("weekly PDF saving", () => {
     const fetch = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
     vi.stubGlobal("fetch", fetch);
     await expect(fetchWeeklyPdf("2026-09-07", controller.signal)).rejects.toThrow("Aborted");
-    expect(fetch).toHaveBeenCalledWith("/api/pdf/download?weekOf=2026-09-07", { signal: controller.signal });
+    expect(fetch).toHaveBeenCalledWith("/api/pdf/download?weekOf=2026-09-07", { signal: controller.signal, cache: "no-store" });
   });
 
   it("downloads on desktop and cleans up the temporary link and URL", async () => {
