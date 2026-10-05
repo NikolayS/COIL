@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Mail } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { PdfDownload } from "@/components/PdfDownload";
 import { QUARTERLY_REVIEW_PROMPTS } from "@/lib/review-prompts";
@@ -129,6 +129,10 @@ function reviewPeriodRange(
   if (period === "custom") {
     return { start: options.customStart, end: options.customEnd, label: "Custom Review" };
   }
+  const invalid = { start: "", end: "", label: "Invalid period" };
+  if (period === "month" && (!/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(options.month))) return invalid;
+  if (period !== "month" && (!Number.isInteger(options.year) || options.year < 2000 || options.year > 2100)) return invalid;
+  if (period === "quarter" && (!Number.isInteger(options.quarter) || options.quarter < 1 || options.quarter > 4)) return invalid;
   if (period === "month") {
     const [year, month] = options.month.split("-").map(Number);
     const start = new Date(Date.UTC(year, month - 1, 1));

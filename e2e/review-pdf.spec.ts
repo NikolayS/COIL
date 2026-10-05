@@ -151,3 +151,28 @@ test("typing during a slow save preserves the newer draft and cancels stale prep
   await page.reload();
   await expect(answer).toHaveValue("Newer typing");
 });
+
+test("consolidated PDF safely handles empty dates and shares without navigation", async ({ page, context, baseURL }) => {
+  await setup(page, context, baseURL!);
+  await ios(page);
+  await page.route("**/api/pdf/consolidated?*", route => route.fulfill({ body: "%PDF-1.7", contentType: "application/pdf" }));
+  await page.goto("/?tab=week&view=report");
+  const prepare = page.getByRole("button", { name: "Prepare consolidated PDF" });
+  await expect(prepare).toBeEnabled();
+  await page.getByLabel("Review month").fill("");
+  await expect(prepare).toBeDisabled();
+  await page.getByLabel("Review period").selectOption("quarter");
+  await page.getByLabel("Review year").fill("999999999");
+  await expect(prepare).toBeDisabled();
+  await page.getByLabel("Review year").fill("2026");
+  await expect(prepare).toBeEnabled();
+  await prepare.click();
+  // The weekly button also says Save PDF on iOS; identify consolidated export.
+  const container = page.getByText("Consolidated weekly reports PDF", { exact: true }).locator("..");
+  const save = container.getByRole("button", { name: "Save PDF", exact: true });
+  await expect(save).toBeEnabled();
+  const url = page.url();
+  await save.click();
+  await expect(save).toBeEnabled();
+  expect(page.url()).toBe(url);
+});
