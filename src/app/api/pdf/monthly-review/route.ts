@@ -113,6 +113,7 @@ export async function GET(req: Request) {
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
+      "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="coil-monthly-review-${month}.pdf"`,
     },
   });

@@ -4,7 +4,11 @@ export function isIosDevice() {
 }
 
 export async function fetchWeeklyPdf(weekOf: string, signal?: AbortSignal) {
-  const response = await fetch(`/api/pdf/download?weekOf=${encodeURIComponent(weekOf)}`, { signal });
+  return fetchPdf(`/api/pdf/download?weekOf=${encodeURIComponent(weekOf)}`, `coil-${weekOf}.pdf`, signal);
+}
+
+export async function fetchPdf(url: string, filename: string, signal?: AbortSignal) {
+  const response = await fetch(url, { signal, cache: "no-store" });
   if (response.redirected) throw new Error("Please sign in again before saving the PDF.");
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -14,7 +18,7 @@ export async function fetchWeeklyPdf(weekOf: string, signal?: AbortSignal) {
   if (await blob.slice(0, 5).text() !== "%PDF-") {
     throw new Error("The server did not return a PDF. Please sign in again or retry.");
   }
-  return new File([blob], `coil-${weekOf}.pdf`, { type: "application/pdf" });
+  return new File([blob], filename, { type: "application/pdf" });
 }
 
 // Call directly from a click: awaiting a fetch first can lose iOS user activation.

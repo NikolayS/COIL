@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Download, Mail } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Plus, LogOut, Settings, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { PdfDownload } from "@/components/PdfDownload";
+import { QUARTERLY_REVIEW_PROMPTS } from "@/lib/review-prompts";
 import { WeeklyPdfDownload } from "@/components/WeeklyPdfDownload";
 import { calendarDate, calendarDateObject, addCalendarDays, weekKey, weekOffsetBetween } from "@/lib/week-date";
 import { nullableDataOrThrow } from "@/lib/supabase-result";
@@ -1206,8 +1208,6 @@ function ExportTab({
   const [reviewYear, setReviewYear] = useState(initialYear);
   const [customStart, setCustomStart] = useState(`${initialYear}-01-01`);
   const [customEnd, setCustomEnd] = useState(isoDate(new Date()));
-  const [reviewDownloading, setReviewDownloading] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const report = generateReport(data, trackerSettings);
 
   const handleSendEmail = async () => {
@@ -1264,35 +1264,11 @@ function ExportTab({
     downloadSqlDump(user, supabase);
   };
 
-  const handleConsolidatedPdf = async () => {
-    const range = reviewPeriodRange(reviewPeriod, {
-      month: reviewMonth, quarter: reviewQuarter, year: reviewYear, customStart, customEnd,
-    });
-    if (!range.start || !range.end || range.start > range.end) {
-      setReviewError("Choose a valid date range.");
-      return;
-    }
-    setReviewDownloading(true);
-    setReviewError(null);
-    try {
-      const params = new URLSearchParams({ start: range.start, end: range.end, label: range.label });
-      const response = await fetch(`/api/pdf/consolidated?${params}`);
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error || "Could not generate the review PDF");
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `coil-review-${range.start}-${range.end}.pdf`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-    } catch (error) {
-      setReviewError(error instanceof Error ? error.message : "Could not generate the review PDF");
-    } finally {
-      setReviewDownloading(false);
-    }
-  };
+  const range = reviewPeriodRange(reviewPeriod, {
+    month: reviewMonth, quarter: reviewQuarter, year: reviewYear, customStart, customEnd,
+  });
+  const validRange = Boolean(range.start && range.end && range.start <= range.end);
+  const consolidatedUrl = `/api/pdf/consolidated?${new URLSearchParams({ start: range.start, end: range.end, label: range.label })}`;
 
   return (
     <div className="space-y-4">
@@ -1340,7 +1316,7 @@ function ExportTab({
         )}
         {user && (
           <div className="mt-2 rounded-2xl border border-[--border] p-3 space-y-2">
-            <p className="text-xs text-[--text-faint] font-mono uppercase tracking-[0.1em]">Consolidated Review PDF</p>
+            <p className="text-xs text-[--text-faint] font-mono uppercase tracking-[0.1em]">Consolidated weekly reports PDF</p>
             <select
               aria-label="Review period"
               value={reviewPeriod}
@@ -1412,16 +1388,14 @@ function ExportTab({
                 />
               </div>
             )}
-            <button
-              onClick={handleConsolidatedPdf}
-              disabled={reviewDownloading}
-              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl font-mono text-xs tracking-[0.1em] uppercase font-medium transition-all active:scale-[0.98] disabled:opacity-40"
-              style={{ backgroundColor: "var(--gold)", color: "var(--bg)" }}
-            >
-              <Download size={15} />
-              {reviewDownloading ? "Building PDF…" : "Download Consolidated PDF"}
-            </button>
-            {reviewError && <p className="text-center text-xs" style={{ color: "var(--error, #e55)" }}>{reviewError}</p>}
+            <PdfDownload
+              url={consolidatedUrl}
+              filename={`coil-review-${range.start}-${range.end}.pdf`}
+              ready={pdfReady && validRange}
+              label="Prepare consolidated PDF"
+            />
+            {!validRange && <p role="alert" className="text-xs text-red-400">Choose a valid date range.</p>}
+
           </div>
         )}
       </div>
@@ -1729,17 +1703,6 @@ function PlanTab({ user, timeZone }: { user: User | null; timeZone: string }) {
   );
 }
 
-const QUARTERLY_REVIEW_PROMPTS = [
-  ["accomplished", "What did I accomplish this quarter?"],
-  ["setbacks", "What were my major setbacks or challenges?"],
-  ["continue", "What practices should I continue?"],
-  ["focus", "Which territory needs greater focus?"],
-  ["lessons", "What were the major lessons?"],
-  ["feeling", "How do I want to feel over the next three months?"],
-  ["oneThing", "What one outcome would meaningfully change my life next quarter?"],
-  ["steps", "What concrete steps will achieve it?"],
-] as const;
-
 function ReviewTab({
   pdfReady,
   user,
@@ -1796,6 +1759,10 @@ function ReviewTab({
     ? quarterYear
     : localYear;
   const periodKey = type === "month" ? safeMonth : `${safeQuarterYear}-Q${quarter}`;
+  const reviewKey = `${user?.id ?? "demo"}:${type}:${periodKey}`;
+  const draftKey = `coil_review_draft:${reviewKey}`;
+  const [loadedReviewKey, setLoadedReviewKey] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
   const period = getReviewPeriod(type, periodKey);
   const targetMonth = type === "month" ? nextMonthKey(safeMonth) : currentMonth;
   const evidenceRequestKey = `${type}:${period.startsOn}:${period.endsOn}`;
@@ -1806,6 +1773,7 @@ function ReviewTab({
       await Promise.resolve();
       if (cancelled) return;
       setLoading(true);
+      setLoadedReviewKey(null);
       setReviewLoadError(null);
       setSaveError(null);
       setReviewCycle(null);
@@ -1832,6 +1800,8 @@ function ReviewTab({
             ? { responses: {}, plan: emptyMonthlyPlan(targetMonth) }
             : { responses: {} });
         }
+        restoreDraft();
+        setLoadedReviewKey(reviewKey);
         setLoading(false);
         return;
       }
@@ -1903,9 +1873,23 @@ function ReviewTab({
           territories: cycleResult.data.territories,
         }));
       }
+      restoreDraft();
+      setLoadedReviewKey(reviewKey);
       setLoading(false);
     };
-    void loadReview();
+    const restoreDraft = () => {
+      try {
+        const draft = localStorage.getItem(draftKey);
+        if (draft) setReview(JSON.parse(draft) as ReviewData);
+      } catch { /* A corrupt/unavailable draft must not replace stored answers. */ }
+    };
+    void loadReview().catch((error) => {
+      if (cancelled) return;
+      restoreDraft();
+      setLoadedReviewKey(reviewKey);
+      setReviewLoadError(error instanceof Error ? error.message : "Could not load review");
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -1963,7 +1947,7 @@ function ReviewTab({
   );
   const evidenceWeeks = user ? (remoteEvidenceWeeks ?? []) : allWeeks;
   const evidenceReady = !user || (evidenceStatus === "ready" && loadedEvidenceKey === evidenceRequestKey);
-  const reviewReady = !loading && reviewLoadError === null;
+  const reviewReady = !loading && loadedReviewKey === reviewKey && reviewLoadError === null;
   const today = localDateInTimeZone(new Date(), timeZone);
   const monthlyEvidence = buildMonthlyEvidence(evidenceWeeks, safeMonth, trackerSettings, today, weekStart);
   const previousEvidence = buildMonthlyEvidence(evidenceWeeks, (() => {
@@ -1986,84 +1970,104 @@ function ReviewTab({
   ) as Record<TerritoryKey, number>;
   const prompts = type === "month" ? MONTHLY_REVIEW_PROMPTS : QUARTERLY_REVIEW_PROMPTS;
 
-  const saveReview = async (applyPlan = false) => {
-    if (!evidenceReady || !reviewReady) {
-      setSaveError("Wait for the review and evidence to load before saving.");
-      return;
+  const editReview = (next: ReviewData) => {
+    if (!reviewReady) return;
+    setReview(next);
+    setSaveStatus("idle");
+    try { localStorage.setItem(draftKey, JSON.stringify(next)); }
+    catch { setSaveError("Could not keep a local draft. Save your answers before leaving this screen."); }
+  };
+
+  const saveReview = async (applyPlan = false): Promise<boolean> => {
+    if (!evidenceReady || !reviewReady || saveInFlight.current) {
+      setSaveError("Wait for the review and evidence to load, or the current save to finish.");
+      return false;
     }
+    saveInFlight.current = true;
     setSaveStatus("saving");
     setSaveError(null);
-    let reviewToSave = review;
-    let cycleToApply: CycleData | null = null;
-    if (applyPlan && type === "month" && review.plan) {
-      const planRange = monthRange(review.plan.targetMonth);
-      reviewToSave = review;
-      cycleToApply = {
-        startsOn: planRange.startsOn,
-        endsOn: planRange.endsOn,
-        mustWin: review.plan.responses.mustWin ?? "",
-        territories: review.plan.territories,
+    try {
+      let reviewToSave = review;
+      let cycleToApply: CycleData | null = null;
+      if (applyPlan && type === "month" && review.plan) {
+        const planRange = monthRange(review.plan.targetMonth);
+        reviewToSave = review;
+        cycleToApply = {
+          startsOn: planRange.startsOn,
+          endsOn: planRange.endsOn,
+          mustWin: review.plan.responses.mustWin ?? "",
+          territories: review.plan.territories,
+        };
+      }
+      const snapshot = type === "month" ? monthlyEvidence : {
+        days: trackedPeriodDays.length, score: totalScore, possible: possibleScore, territories: territoryTotals,
       };
-    }
-    const snapshot = type === "month" ? monthlyEvidence : {
-      days: trackedPeriodDays.length, score: totalScore, possible: possibleScore, territories: territoryTotals,
-    };
-    const storedResponses = type === "month" ? encodeStoredReview(reviewToSave) : review.responses;
-    if (!user) {
-      localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(storedResponses));
-    } else {
-      const { error } = await createClient().rpc("save_period_review_and_cycle", {
-        p_review_type: type,
-        p_starts_on: period.startsOn,
-        p_ends_on: period.endsOn,
-        p_responses: storedResponses,
-        p_snapshot: snapshot,
-        p_cycle_starts_on: cycleToApply?.startsOn ?? null,
-        p_cycle_ends_on: cycleToApply?.endsOn ?? null,
-        p_cycle_must_win: cycleToApply?.mustWin ?? null,
-        p_cycle_territories: cycleToApply?.territories ?? null,
-      });
-      if (error) {
-        setSaveStatus("error");
-        setSaveError(error.message);
-        return;
-      }
-    }
-
-    if (cycleToApply) {
-      const cycle = cycleToApply;
-      const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
+      const storedResponses = type === "month" ? encodeStoredReview(reviewToSave) : review.responses;
       if (!user) {
-        localStorage.setItem(monthlyPlanStorageKey(reviewToSave.plan?.targetMonth ?? cycle.startsOn.slice(0, 7)), JSON.stringify(cycle));
-      }
-      const weekStartDate = new Date(data.weekOf);
-      const weekEndDate = new Date(weekStartDate);
-      weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
-      if (isoDate(weekStartDate) <= planRange.endsOn && isoDate(weekEndDate) >= planRange.startsOn) {
-        onChange((current) => {
-          if (!current || calendarDate(current.weekOf) !== calendarDate(data.weekOf)) return current;
-          return {
-            ...current,
-            weekly: {
-              ...current.weekly,
-              priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
-                key,
-                cycle.territories[key].outcome.trim() || current.weekly.priorities[key],
-              ])) as Record<TerritoryKey, string>,
-            },
-          };
+        localStorage.setItem(`coil_review_${type}_${periodKey}`, JSON.stringify(storedResponses));
+      } else {
+        const { error } = await createClient().rpc("save_period_review_and_cycle", {
+          p_review_type: type,
+          p_starts_on: period.startsOn,
+          p_ends_on: period.endsOn,
+          p_responses: storedResponses,
+          p_snapshot: snapshot,
+          p_cycle_starts_on: cycleToApply?.startsOn ?? null,
+          p_cycle_ends_on: cycleToApply?.endsOn ?? null,
+          p_cycle_must_win: cycleToApply?.mustWin ?? null,
+          p_cycle_territories: cycleToApply?.territories ?? null,
         });
+        if (error) {
+          setSaveStatus("error");
+          setSaveError(error.message);
+          return false;
+        }
       }
-    }
-    setSaveStatus("saved");
-    setTimeout(() => setSaveStatus("idle"), 1500);
+      if (cycleToApply) {
+        const cycle = cycleToApply;
+        const planRange = { startsOn: cycle.startsOn, endsOn: cycle.endsOn };
+        if (!user) {
+          localStorage.setItem(monthlyPlanStorageKey(reviewToSave.plan?.targetMonth ?? cycle.startsOn.slice(0, 7)), JSON.stringify(cycle));
+        }
+        const weekStartDate = new Date(data.weekOf);
+        const weekEndDate = new Date(weekStartDate);
+        weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+        if (isoDate(weekStartDate) <= planRange.endsOn && isoDate(weekEndDate) >= planRange.startsOn) {
+          onChange((current) => {
+            if (!current || calendarDate(current.weekOf) !== calendarDate(data.weekOf)) return current;
+            return {
+              ...current,
+              weekly: {
+                ...current.weekly,
+                priorities: Object.fromEntries(TERRITORY_KEYS.map((key) => [
+                  key,
+                  cycle.territories[key].outcome.trim() || current.weekly.priorities[key],
+                ])) as Record<TerritoryKey, string>,
+              },
+            };
+          });
+        }
+      }
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 1500);
+      // Never discard typing that happened while the submitted snapshot was saving.
+      try {
+        if (localStorage.getItem(draftKey) === JSON.stringify(reviewToSave)) localStorage.removeItem(draftKey);
+      } catch { /* Saving succeeded even if local draft cleanup is unavailable. */ }
+      return true;
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveError(error instanceof Error ? error.message : "Could not save review. Your answers remain here.");
+      return false;
+    } finally { saveInFlight.current = false; }
+  };
+
+  const saveBeforePdf = async () => {
+    if (!await saveReview(false)) throw new Error("PDF stopped because your answers could not be saved. Your draft remains here; retry Save.");
   };
 
   const updatePlan = (updater: (plan: MonthlyPlan) => MonthlyPlan) => {
-    setReview((current) => ({
-      ...current,
-      plan: updater(current.plan ?? emptyMonthlyPlan(targetMonth)),
-    }));
+    editReview({ ...review, plan: updater(review.plan ?? emptyMonthlyPlan(targetMonth)) });
   };
 
   const copyMonthlyReport = async () => {
@@ -2244,8 +2248,8 @@ function ReviewTab({
         </div>
       )}
 
-      {loading ? (
-        <p className="py-8 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">Loading review…</p>
+      {!reviewReady ? (
+        <p className="py-8 text-center text-xs font-mono uppercase tracking-[0.15em] text-[--text-faint]">{reviewLoadError ? `Could not load review: ${reviewLoadError}. Reload to retry; your local draft is kept.` : "Loading review…"}</p>
       ) : type === "month" && monthlyPhase === "plan" ? (
         <div className="space-y-5">
           <label className="block text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">
@@ -2297,10 +2301,7 @@ function ReviewTab({
             label={label}
             placeholder="Reflect from the evidence above..."
             value={review.responses[key] ?? ""}
-            onChange={(value) => setReview((current) => ({
-              ...current,
-              responses: { ...current.responses, [key]: value },
-            }))}
+            onChange={(value) => editReview({ ...review, responses: { ...review.responses, [key]: value } })}
           />
         ))
       )}
@@ -2322,18 +2323,33 @@ function ReviewTab({
             {copyStatus ? "Copied" : "Copy report"}
           </button>
           {user ? (
-            <button type="button" disabled={!evidenceReady} onClick={() => { window.location.href = `/api/pdf/monthly-review?month=${safeMonth}`; }} className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-muted] disabled:opacity-50">
-              Monthly PDF
-            </button>
+            <PdfDownload
+              url={`/api/pdf/monthly-review?month=${safeMonth}`}
+              filename={`coil-monthly-review-${safeMonth}.pdf`}
+              ready={evidenceReady && reviewReady && pdfReady}
+              revision={`${reviewKey}:${JSON.stringify(review)}`}
+              beforePrepare={saveBeforePdf}
+              label="Save & prepare monthly PDF"
+            />
           ) : (
             <button type="button" disabled className="rounded-xl border border-[--border] py-3 text-xs font-mono uppercase tracking-[0.1em] text-[--text-faint] opacity-50">PDF requires account</button>
           )}
         </div>
       ) : (
+        <div className="space-y-3">
+          {user && <PdfDownload
+            url={`/api/pdf/quarterly-review?year=${safeQuarterYear}&quarter=${quarter}`}
+            filename={`coil-quarterly-review-${periodKey}.pdf`}
+            ready={evidenceReady && reviewReady && pdfReady}
+            revision={`${reviewKey}:${JSON.stringify(review)}`}
+            beforePrepare={saveBeforePdf}
+            label="Save & prepare quarterly PDF"
+          />}
         <details open={exportsOpen} onToggle={(event) => setExportsOpen(event.currentTarget.open)} className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
           <summary className="cursor-pointer text-xs font-mono uppercase tracking-[0.12em] text-[--text-muted]">Share & exports</summary>
           {exportsOpen && <div className="mt-5"><ExportTab pdfReady={pdfReady} data={data} user={user} trackerSettings={trackerSettings} /></div>}
         </details>
+        </div>
       )}
 
       <details className="rounded-xl border border-[--border] bg-[--bg-card] px-4 py-3">
