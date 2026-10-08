@@ -3,192 +3,342 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./wolf.module.css";
 
-const modes = ["Assemble", "Breathe", "Disperse"];
+// The original artwork supplies color, not a textured plane. Every sample becomes
+// a free particle on (or inside) a sculpted head, with a separate 3D trajectory.
 const vertex = `
 attribute vec3 position;
 attribute vec3 color;
-attribute vec3 scatter;
-attribute float seed;
+attribute vec4 particle;
 uniform float time;
-uniform float mode;
+uniform float motion;
+uniform float burst;
 uniform float aspect;
-uniform float pixelRatio;
-uniform vec2 pointer;
+uniform float pointScale;
+uniform vec2 rotation;
+uniform vec3 pointer;
+uniform vec2 origin;
 varying vec3 tint;
 varying float opacity;
 void main() {
-  float dispersed = smoothstep(1.0, 2.0, mode);
-  float breathing = min(mode, 1.0) * (1.0 - dispersed);
-  vec3 p = mix(position, scatter, dispersed);
-  p.z += sin(time * 0.7 + seed * 12.0) * 0.065 * breathing;
-  p.xy *= 1.0 + sin(time * 0.85) * 0.016 * breathing;
-  vec2 delta = p.xy - pointer;
-  float distance = length(delta);
-  p.xy += normalize(delta + vec2(0.0001)) * exp(-distance * distance * 28.0) * 0.055;
-  float yaw = sin(time * 0.25) * 0.1 + (abs(pointer.x) < 3.0 ? pointer.x * 0.14 : 0.0);
-  float pitch = abs(pointer.y) < 3.0 ? pointer.y * 0.09 : 0.0;
+  float seed = particle.x;
+  float phase = seed * 62.83185;
+  float loose = particle.y;
+  float wander = pow(max(0.0, sin(time * 0.65 + phase)), 12.0);
+  float amplitude = (loose < 0.0 ? 0.003 + wander * 0.014 : 0.008 + loose * 0.025 + wander * 0.075) * motion;
+  vec3 p = position;
+  p += vec3(sin(time * 1.2 + phase + p.y * 4.0),
+            cos(time * 0.9 + phase * 1.7 + p.x * 3.0),
+            sin(time * 1.1 + phase * 2.3)) * amplitude;
+  // Sparse orbiting particles make the volume and continuous flow legible.
+  if (loose > 1.5) {
+    float angle = time * (0.15 + seed * 0.14) * motion;
+    p.xz = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * p.xz;
+    p.y += sin(time * 0.7 + phase) * 0.065 * motion;
+  }
+  float yaw = rotation.x;
+  float pitch = rotation.y;
   p.xz = mat2(cos(yaw), -sin(yaw), sin(yaw), cos(yaw)) * p.xz;
   p.yz = mat2(cos(pitch), -sin(pitch), sin(pitch), cos(pitch)) * p.yz;
-  float perspective = 2.8 / (2.8 - p.z);
-  vec2 scale = aspect > 1.0 ? vec2(0.9 / aspect, 0.9) : vec2(0.9, 0.9 * aspect);
-  gl_Position = vec4(p.xy * scale * perspective, 0.0, 1.0);
-  gl_PointSize = (1.25 + seed * 0.75) * pixelRatio * perspective;
-  tint = color;
-  opacity = (0.62 + seed * 0.38) * (1.0 - dispersed * 0.22);
+  // Interaction is applied in projected space, so the disturbed area stays
+  // under the actual finger/cursor even when the sculpture is turned.
+  float perspective = 3.6 / (3.6 - p.z);
+  vec2 delta = p.xy * perspective - pointer.xy;
+  float influence = exp(-dot(delta, delta) * 9.0) * pointer.z;
+  vec2 away = normalize(delta + vec2(0.0001));
+  p.xy += (away * 0.30 + vec2(-away.y, away.x) * 0.10) * influence;
+  p.z += influence * (0.18 + seed * 0.17);
+  vec3 outward = normalize(vec3(p.xy - origin * 0.35, p.z + 0.15)
+    + vec3(sin(phase * 3.1), cos(phase * 2.7), sin(phase * 4.3)) * 0.65);
+  p += outward * burst * (0.8 + seed * 1.4);
+  p.xy += vec2(-outward.y, outward.x) * burst * 0.32;
+  float distance = max(1.1, 3.6 - p.z);
+  vec2 fit = aspect > 1.0 ? vec2(0.86 / aspect, 0.86) : vec2(0.86, 0.86 * aspect);
+  gl_Position = vec4(p.xy * fit * 3.6, (distance - 3.6) * 0.15 * distance, distance);
+  gl_PointSize = clamp(particle.z * pointScale * 3.6 / distance, 1.0, 12.0);
+  float depthLight = clamp(0.75 + p.z * 0.27, 0.4, 1.2);
+  tint = color * depthLight;
+  opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion));
 }`;
 const fragment = `
 precision mediump float;
 varying vec3 tint;
 varying float opacity;
 void main() {
-  float r = length(gl_PointCoord - 0.5);
-  float alpha = (1.0 - smoothstep(0.18, 0.5, r)) * opacity;
+  float radius = length(gl_PointCoord - 0.5) * 2.0;
+  if (radius > 1.0) discard;
+  float alpha = (1.0 - smoothstep(0.25, 1.0, radius)) * opacity;
   gl_FragColor = vec4(tint, alpha);
 }`;
 
 export default function WolfPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const controls = useRef({ mode: 1, paused: false });
-  const [mode, setMode] = useState(1);
-  const [paused, setPaused] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => { controls.current = { mode, paused }; }, [mode, paused]);
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    controls.current.paused = reduced;
-    setPaused(reduced);
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduced = preference.matches;
     const gl = canvas.getContext("webgl", { alpha: true, antialias: false, powerPreference: "low-power" });
     if (!gl) { setFailed(true); return; }
     let disposed = false;
     let frame = 0;
+    let loaded = false;
     let elapsed = 0;
     let last = 0;
-    let currentMode = 1;
-    let visible = true;
+    let burstAge = 20;
+    let burstCount = 0;
+    let paused = false;
+    let yaw = 0.20;
+    let pitch = -0.04;
+    const pointer = { x: 0, y: 0, strength: 0, target: 0, tiltX: 0, tiltY: 0 };
+    const origin = { x: 0, y: 0 };
     const shaders: WebGLShader[] = [];
     const buffers: WebGLBuffer[] = [];
-    const program = gl.createProgram()!;
-    const pointer = { x: 10, y: 10 };
-    function compile(type: number, source: string) {
-      const shader = gl!.createShader(type)!;
-      shaders.push(shader);
-      gl!.shaderSource(shader, source);
-      gl!.compileShader(shader);
-      if (!gl!.getShaderParameter(shader, gl!.COMPILE_STATUS)) throw new Error("Shader unavailable");
-      gl!.attachShader(program, shader);
-    }
-    const onLost = (event: Event) => { event.preventDefault(); cancelAnimationFrame(frame); setReady(false); setFailed(true); };
+    const program = gl.createProgram();
+    if (!program) { setFailed(true); return; }
+    let uniforms: Record<string, WebGLUniformLocation | null> = {};
+    let count = 0;
+
+    const schedule = () => {
+      if (!frame && loaded && !disposed && !document.hidden) frame = requestAnimationFrame(render);
+    };
+    const render = (now: number) => {
+      frame = 0;
+      if (disposed || document.hidden) return;
+      const dt = last ? Math.min((now - last) / 1000, 0.05) : 1 / 60;
+      last = now;
+      if (!reduced && !paused) elapsed += dt;
+      burstAge += dt;
+      const easing = 1 - Math.exp(-dt * 8);
+      pointer.strength += (pointer.target - pointer.strength) * easing;
+      const targetYaw = 0.20 + (reduced || paused ? 0 : Math.sin(elapsed * 0.34) * 0.30) + pointer.tiltX;
+      const targetPitch = -0.04 + (reduced || paused ? 0 : Math.sin(elapsed * 0.27) * 0.09) + pointer.tiltY;
+      yaw += (targetYaw - yaw) * easing;
+      pitch += (targetPitch - pitch) * easing;
+      const burst = (1 - Math.exp(-burstAge * 9)) * Math.exp(-burstAge * 1.15) * (reduced ? 0.10 : 1.6);
+      // Bound both fill rate and geometry on phones/high-DPR displays.
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.75, 1900 / Math.max(canvas.clientWidth, canvas.clientHeight));
+      const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+      const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+      gl.viewport(0, 0, width, height);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.uniform1f(uniforms.time, elapsed);
+      gl.uniform1f(uniforms.motion, reduced ? 0 : 1);
+      gl.uniform1f(uniforms.burst, burst);
+      gl.uniform1f(uniforms.aspect, width / height);
+      gl.uniform1f(uniforms.pointScale, ratio * Math.max(0.72, Math.min(canvas.clientWidth, canvas.clientHeight) / 700));
+      gl.uniform2f(uniforms.rotation, yaw, pitch);
+      gl.uniform3f(uniforms.pointer, pointer.x, pointer.y, pointer.strength);
+      gl.uniform2f(uniforms.origin, origin.x, origin.y);
+      gl.drawArrays(gl.POINTS, 0, count);
+      if ((!reduced && !paused) || burstAge < 7 || Math.abs(pointer.target - pointer.strength) > 0.001
+        || Math.abs(targetYaw - yaw) > 0.001 || Math.abs(targetPitch - pitch) > 0.001) schedule();
+    };
+    const fail = () => {
+      if (disposed) return;
+      loaded = false;
+      cancelAnimationFrame(frame);
+      frame = 0;
+      setReady(false);
+      setFailed(true);
+    };
+    const onLost = (event: Event) => { event.preventDefault(); fail(); };
     canvas.addEventListener("webglcontextlost", onLost);
     const image = new Image();
-    image.src = "/brand/the-powerful-man-wolf.png";
-    image.onerror = () => { if (!disposed) setFailed(true); };
+    image.onerror = fail;
     image.onload = () => {
       if (disposed) return;
       try {
-        compile(gl.VERTEX_SHADER, vertex);
-        compile(gl.FRAGMENT_SHADER, fragment);
+        for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
+          const shader = gl.createShader(type);
+          if (!shader) throw new Error("Shader unavailable");
+          shaders.push(shader);
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error("Shader unavailable");
+          gl.attachShader(program, shader);
+        }
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("Renderer unavailable");
         gl.useProgram(program);
         const sample = document.createElement("canvas");
-        sample.width = 260; sample.height = 278;
-        const ctx = sample.getContext("2d")!;
+        sample.width = window.matchMedia("(max-width: 600px)").matches ? 176 : 224;
+        sample.height = Math.round(sample.width * image.naturalHeight / image.naturalWidth);
+        const ctx = sample.getContext("2d");
+        if (!ctx) throw new Error("Image sampling unavailable");
         ctx.drawImage(image, 0, 0, sample.width, sample.height);
         const pixels = ctx.getImageData(0, 0, sample.width, sample.height).data;
-        const positions: number[] = [], colors: number[] = [], scattered: number[] = [], seeds: number[] = [];
+        const positions: number[] = [], colors: number[] = [], particles: number[] = [];
+        let randomState = 7319;
+        const random = () => {
+          randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+          return randomState / 4294967296;
+        };
+        const gaussian = (x: number, y: number, cx: number, cy: number, sx: number, sy: number) =>
+          Math.exp(-(((x - cx) / sx) ** 2) - ((y - cy) / sy) ** 2);
+        const add = (x: number, y: number, z: number, r: number, g: number, b: number, loose: number, opacity: number) => {
+          positions.push(x, y, z);
+          colors.push(r, g, b);
+          particles.push(random(), loose, (1.6 + random() * 1.4) * (loose < -1 ? 1.35 : 1), opacity);
+        };
         for (let y = 0; y < sample.height; y++) for (let x = 0; x < sample.width; x++) {
           const i = (y * sample.width + x) * 4;
-          if (pixels[i + 3] < 100) continue;
+          if (pixels[i + 3] < 110) continue;
           const r = pixels[i] / 255, g = pixels[i + 1] / 255, b = pixels[i + 2] / 255;
           const light = Math.max(r, g, b);
-          // Retain the silhouette without letting black ink disappear against the stage.
-          if (light < 0.12 && (x + y) % 3 !== 0) continue;
-          const seed = ((x * 127 + y * 311) % 997) / 997;
-          const px = (x / sample.width - 0.5) * 1.7;
-          const py = (0.5 - y / sample.height) * 1.82;
-          positions.push(px, py, light * 0.16 + Math.sin(x * 0.07) * Math.cos(y * 0.05) * 0.065);
-          colors.push(Math.max(r, 0.16), Math.max(g, 0.14), Math.max(b, 0.12));
-          const angle = seed * Math.PI * 2 + y * 0.12;
-          const radius = 0.3 + ((x * 43 + y * 71) % 991) / 991 * 1.2;
-          scattered.push(Math.cos(angle) * radius, Math.sin(angle) * radius, Math.sin(seed * 43) * 0.65);
-          seeds.push(seed);
-        }
-        function attribute(name: string, values: number[], size: number) {
-          const buffer = gl!.createBuffer()!; buffers.push(buffer);
-          gl!.bindBuffer(gl!.ARRAY_BUFFER, buffer);
-          gl!.bufferData(gl!.ARRAY_BUFFER, new Float32Array(values), gl!.STATIC_DRAW);
-          const location = gl!.getAttribLocation(program, name);
-          gl!.enableVertexAttribArray(location);
-          gl!.vertexAttribPointer(location, size, gl!.FLOAT, false, 0, 0);
-        }
-        attribute("position", positions, 3); attribute("color", colors, 3);
-        attribute("scatter", scattered, 3); attribute("seed", seeds, 1);
-        const uniforms = Object.fromEntries(["time", "mode", "aspect", "pixelRatio", "pointer"].map(name => [name, gl.getUniformLocation(program, name)]));
-        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-        setReady(true);
-        const render = (now: number) => {
-          if (disposed) return;
-          const dt = last ? Math.min((now - last) / 1000, 0.05) : 0; last = now;
-          if (visible && !document.hidden) {
-            if (!controls.current.paused) elapsed += dt;
-            currentMode += (controls.current.mode - currentMode) * (1 - Math.exp(-dt * 3.5));
-            const ratio = Math.min(window.devicePixelRatio || 1, 2);
-            const width = Math.round(canvas.clientWidth * ratio), height = Math.round(canvas.clientHeight * ratio);
-            if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-            gl.viewport(0, 0, width, height); gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.uniform1f(uniforms.time, elapsed); gl.uniform1f(uniforms.mode, currentMode);
-            gl.uniform1f(uniforms.aspect, width / height); gl.uniform1f(uniforms.pixelRatio, ratio);
-            gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
-            gl.drawArrays(gl.POINTS, 0, seeds.length);
+          const colored = r > g * 1.4 || b > r * 1.25;
+          if (light < 0.12 && random() > 0.34) continue;
+          if (light > 0.12 && !colored && random() > 0.77) continue;
+          const px = (x / sample.width - 0.5) * 1.86;
+          const py = (0.5 - y / sample.height) * 2;
+          // Anatomical relief: a rounded cranium, cheek masses, forward muzzle
+          // and nose, recessed eye sockets, and separately raised rose petals.
+          const head = gaussian(px, py, 0, 0.03, 0.65, 0.80);
+          const muzzle = gaussian(px, py, 0.02, -0.29, 0.27, 0.35);
+          const nose = gaussian(px, py, 0.02, -0.35, 0.16, 0.12);
+          const cheeks = gaussian(Math.abs(px), py, 0.38, -0.03, 0.22, 0.30);
+          const eyes = gaussian(Math.abs(px), py, 0.23, 0.19, 0.12, 0.10);
+          const rose = gaussian(px, py, -0.57, -0.43, 0.24, 0.27);
+          const front = -0.13 + head * 0.42 + muzzle * 0.40 + nose * 0.17 + cheeks * 0.12 - eyes * 0.11 + rose * 0.50;
+          const jitter = 1.4 / sample.width;
+          const blueEye = b > r * 1.25 && b > 0.35;
+          const surfaceZ = front + (blueEye ? 0.11 : 0) + (random() - 0.5) * 0.045;
+          // Slightly lit charcoal preserves the black fur and nose on black.
+          const cr = Math.max(r * (blueEye ? 0.7 : 0.95), 0.085);
+          const cg = Math.max(g * (blueEye ? 1.35 : 0.96), 0.105);
+          const cb = Math.max(b * (blueEye ? 1.7 : 1), 0.13);
+          add(px + (random() - 0.5) * jitter, py + (random() - 0.5) * jitter, surfaceZ, cr, cg, cb, blueEye ? -2 : colored ? -1 : 0, 0.94);
+          // A closed curved back and random interior samples produce real
+          // thickness rather than several identical stacked image planes.
+          if (random() < 0.36 && head > 0.18) {
+            const depth = random();
+            const back = -0.20 - head * 0.46;
+            const z = back + (front - back) * depth;
+            const taper = 0.76 + 0.24 * Math.sin(depth * Math.PI / 2);
+            add(px * taper, py * taper, z, cr * 0.43, cg * 0.48, cb * 0.57, 1, 0.53);
           }
-          frame = requestAnimationFrame(render);
+          if (random() < 0.12 && head > 0.22) {
+            add(px * 0.85, py * 0.91, -0.20 - head * 0.46, cr * 0.32, cg * 0.39, cb * 0.50, 0.7, 0.6);
+          }
+        }
+        for (let i = 0; i < 650; i++) {
+          const angle = random() * Math.PI * 2;
+          const radius = 0.85 + random() * 0.58;
+          const y = (random() - 0.5) * 2.25;
+          const red = i % 9 === 0;
+          add(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.65,
+            red ? 0.68 : 0.31, red ? 0.09 : 0.42, red ? 0.08 : 0.54, 2, 0.30 + random() * 0.30);
+        }
+        const attribute = (name: string, values: number[], size: number) => {
+          const buffer = gl.createBuffer();
+          if (!buffer) throw new Error("Particle buffer unavailable");
+          buffers.push(buffer);
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+          const location = gl.getAttribLocation(program, name);
+          gl.enableVertexAttribArray(location);
+          gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
         };
-        frame = requestAnimationFrame(render);
-      } catch { setFailed(true); }
+        attribute("position", positions, 3);
+        attribute("color", colors, 3);
+        attribute("particle", particles, 4);
+        count = particles.length / 4;
+        uniforms = Object.fromEntries(["time", "motion", "burst", "aspect", "pointScale", "rotation", "pointer", "origin"]
+          .map(name => [name, gl.getUniformLocation(program, name)]));
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(0, 0, 0, 0);
+        canvas.dataset.particles = String(count);
+        let minDepth = Infinity, maxDepth = -Infinity;
+        for (let i = 2; i < positions.length; i += 3) { minDepth = Math.min(minDepth, positions[i]); maxDepth = Math.max(maxDepth, positions[i]); }
+        canvas.dataset.depthRange = (maxDepth - minDepth).toFixed(3);
+        loaded = true;
+        setReady(true);
+        schedule();
+      } catch { fail(); }
     };
+    image.src = "/brand/the-powerful-man-wolf.png";
+
     const move = (event: PointerEvent) => {
-      if (controls.current.paused) return;
-      const rect = canvas.getBoundingClientRect(), aspect = rect.width / rect.height;
-      pointer.x = ((event.clientX - rect.left) / rect.width * 2 - 1) / (aspect > 1 ? 0.9 / aspect : 0.9);
-      pointer.y = (1 - (event.clientY - rect.top) / rect.height * 2) / (aspect > 1 ? 0.9 : 0.9 * aspect);
+      const rect = canvas.getBoundingClientRect();
+      const nx = (event.clientX - rect.left) / rect.width * 2 - 1;
+      const ny = 1 - (event.clientY - rect.top) / rect.height * 2;
+      const aspect = rect.width / rect.height;
+      pointer.x = nx / (aspect > 1 ? 0.86 / aspect : 0.86);
+      pointer.y = ny / (aspect > 1 ? 0.86 : 0.86 * aspect);
+      pointer.target = reduced ? 0.4 : 1;
+      pointer.tiltX = nx * (reduced ? 0.20 : 0.55);
+      pointer.tiltY = -ny * (reduced ? 0.12 : 0.28);
+      schedule();
     };
-    const leave = () => { pointer.x = 10; pointer.y = 10; };
-    canvas.addEventListener("pointermove", move); canvas.addEventListener("pointerleave", leave);
-    const observer = new IntersectionObserver(entries => { visible = entries[0].isIntersecting; });
-    observer.observe(canvas);
+    const leave = () => {
+      pointer.target = 0;
+      pointer.tiltX = 0;
+      pointer.tiltY = 0;
+      schedule();
+    };
+    const explode = () => {
+      burstAge = 0;
+      origin.x = pointer.x;
+      origin.y = pointer.y;
+      canvas.dataset.bursts = String(++burstCount);
+      schedule();
+    };
+    const down = (event: PointerEvent) => { move(event); explode(); };
+    const up = (event: PointerEvent) => { if (event.pointerType !== "mouse") leave(); };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Enter") { event.preventDefault(); explode(); }
+      if (event.key === " ") { event.preventDefault(); paused = !paused; schedule(); }
+      if (event.key === "Escape") { burstAge = 20; leave(); }
+    };
+    const visibility = () => {
+      last = 0;
+      if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
+      else schedule();
+    };
+    const motionChange = () => { reduced = preference.matches; schedule(); };
+    const resize = new ResizeObserver(schedule);
+    resize.observe(canvas);
+    canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerdown", down);
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", leave);
+    canvas.addEventListener("pointerleave", leave);
+    canvas.addEventListener("keydown", key);
+    document.addEventListener("visibilitychange", visibility);
+    preference.addEventListener("change", motionChange);
     return () => {
-      disposed = true; cancelAnimationFrame(frame); observer.disconnect();
+      disposed = true;
+      cancelAnimationFrame(frame);
+      resize.disconnect();
       image.onload = null; image.onerror = null;
-      canvas.removeEventListener("pointermove", move); canvas.removeEventListener("pointerleave", leave);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointercancel", leave);
+      canvas.removeEventListener("pointerleave", leave);
+      canvas.removeEventListener("keydown", key);
       canvas.removeEventListener("webglcontextlost", onLost);
-      buffers.forEach(buffer => gl.deleteBuffer(buffer)); shaders.forEach(shader => gl.deleteShader(shader)); gl.deleteProgram(program);
+      document.removeEventListener("visibilitychange", visibility);
+      preference.removeEventListener("change", motionChange);
+      buffers.forEach(buffer => gl.deleteBuffer(buffer));
+      shaders.forEach(shader => gl.deleteShader(shader));
+      gl.deleteProgram(program);
     };
   }, []);
 
   return <main className={styles.page}>
-    <header className={styles.header}><a href="/">COIL<span> / VISUAL LAB</span></a><span className={styles.preview}>EXPERIMENT 001</span></header>
-    <section className={styles.hero}>
-      <div className={styles.copy}>
-        <p className={styles.eyebrow}>THE POWERFUL MAN</p>
-        <h1>Gentle.<br />Fierce.<br /><em>Alive.</em></h1>
-        <p className={styles.description}>The same wolf. A different dimension.<br />Thousands of particles. One powerful presence.</p>
-        <div className={styles.controls} aria-label="Particle modes">{modes.map((name, index) => <button key={name} aria-pressed={mode === index} onClick={() => setMode(index)}>{name}</button>)}</div>
-        <p className={styles.hint}>Move across the wolf to disturb the field.</p>
-      </div>
-      <div className={styles.stage}>
-        <div className={styles.halo} />
-        {/* The original is also the accessible fallback for unsupported graphics. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className={styles.fallback} style={{ opacity: ready && !failed ? 0 : 1 }} src="/brand/the-powerful-man-wolf.png" alt="The Powerful Man’s wolf with blue eyes holding a red rose" />
-        <canvas ref={canvasRef} className={styles.canvas} data-ready={ready} aria-hidden="true" style={{ opacity: failed ? 0 : 1 }} />
-        <span className={styles.stageLabel}>WOLF / PARTICLE STUDY</span>
-        <button className={styles.pause} onClick={() => setPaused(value => !value)}>{paused ? "Resume motion" : "Pause motion"}</button>
-        {failed && <span className={styles.status}>Original logo · animation unavailable</span>}
-      </div>
-    </section>
-    <footer className={styles.footer}><span>GENTLE AS HE IS FIERCE.</span><a href="https://thepowerfulman.com/" target="_blank" rel="noreferrer">Official logo · The Powerful Man ↗</a><span>COIL PREVIEW / NOT PRODUCTION</span></footer>
+    {/* The original is only a loading/unsupported-graphics fallback, never an overlay. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img className={styles.fallback} style={{ opacity: ready && !failed ? 0 : 1 }}
+      src="/brand/the-powerful-man-wolf.png" alt="Wolf with blue eyes holding a red rose"
+      aria-hidden={ready && !failed} />
+    <canvas ref={canvasRef} className={styles.canvas} data-ready={ready && !failed}
+      data-bursts="0" tabIndex={ready && !failed ? 0 : -1} role="img" aria-hidden={!ready || failed}
+      aria-label="Interactive three-dimensional wolf made of moving particles. Move to turn and disturb the particles. Click, tap or press Enter to scatter them. Press Space to pause motion."
+      style={{ opacity: failed ? 0 : 1 }} />
   </main>;
 }
