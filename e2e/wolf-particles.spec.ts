@@ -1,5 +1,36 @@
 import { test, expect } from '@playwright/test';
 
+for (const phone of [false, true]) {
+  test(`${phone ? 'phone' : 'desktop'} starts scattered and assembles into the wolf`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: phone ? { width: 390, height: 844 } : { width: 1280, height: 720 },
+      hasTouch: phone, isMobile: phone,
+    });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/lab/wolf');
+    const canvas = page.locator('canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(canvas).toHaveAttribute('data-assembled', 'false');
+    await expect(page.locator('main img')).toHaveCSS('opacity', '0');
+    const cloud = await canvas.screenshot({ path: testInfo.outputPath('cloud.png') });
+    await page.waitForTimeout(1100);
+    const gathering = await canvas.screenshot({ path: testInfo.outputPath('gathering.png') });
+    expect(gathering.equals(cloud)).toBe(false);
+    await expect(canvas).toHaveAttribute('data-assembled', 'true', { timeout: 10000 });
+    const head = await canvas.screenshot({ path: testInfo.outputPath('head.png') });
+    expect(head.equals(gathering)).toBe(false);
+    await expect(canvas).toHaveAttribute('data-bursts', '0');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.reload();
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(canvas).toHaveAttribute('data-assembled', 'true');
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+}
+
 test('public particle-only scene animates and reacts to mouse and click', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

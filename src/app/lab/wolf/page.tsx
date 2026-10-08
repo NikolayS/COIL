@@ -11,6 +11,7 @@ attribute vec3 color;
 attribute vec4 particle;
 uniform float time;
 uniform float motion;
+uniform float assembly;
 uniform float burst;
 uniform float aspect;
 uniform float pointScale;
@@ -35,6 +36,14 @@ void main() {
     p.xz = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * p.xz;
     p.y += sin(time * 0.7 + phase) * 0.065 * motion;
   }
+  // Start as a free 3D cloud; staggered, curved paths gather into the head.
+  // At completion this is exactly the existing sculpture, not a new geometry.
+  float gather = smoothstep(seed * 0.18, 0.78 + seed * 0.22, assembly);
+  vec3 cloud = (fract(sin(vec3(seed * 127.1 + 3.0, seed * 311.7 + 8.0,
+    seed * 74.7 + 13.0)) * 43758.5453) * 2.0 - 1.0) * vec3(1.65, 1.65, 1.2);
+  p = mix(cloud, p, gather);
+  p.xy += vec2(cos(phase + assembly * 4.0), sin(phase + assembly * 4.0))
+    * sin(gather * 3.14159) * 0.18;
   float yaw = rotation.x;
   float pitch = rotation.y;
   p.xz = mat2(cos(yaw), -sin(yaw), sin(yaw), cos(yaw)) * p.xz;
@@ -57,7 +66,8 @@ void main() {
   gl_PointSize = clamp(particle.z * pointScale * 3.6 / distance, 1.0, 12.0);
   float depthLight = clamp(0.75 + p.z * 0.27, 0.4, 1.2);
   tint = color * depthLight;
-  opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion));
+  opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion))
+    * mix(0.28, 1.0, gather);
 }`;
 const fragment = `
 precision mediump float;
@@ -85,6 +95,7 @@ export default function WolfPage() {
     let frame = 0;
     let loaded = false;
     let elapsed = 0;
+    let assemblyAge = 0;
     let last = 0;
     let burstAge = 20;
     let burstCount = 0;
@@ -112,6 +123,9 @@ export default function WolfPage() {
       const dt = last ? Math.min((now - last) / 1000, 0.05) : 1 / 60;
       last = now;
       if (!reduced && !paused) elapsed += dt;
+      if (!paused) assemblyAge = Math.min(2.8, assemblyAge + dt);
+      const assembly = reduced || assemblyAge >= 2.8 ? 1 : Math.max(0, (assemblyAge - 0.35) / 2.45);
+      canvas.dataset.assembled = String(assembly === 1);
       burstAge += dt;
       const easing = 1 - Math.exp(-dt * 8);
       pointer.strength += (pointer.target - pointer.strength) * easing;
@@ -129,6 +143,7 @@ export default function WolfPage() {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.uniform1f(uniforms.time, elapsed);
       gl.uniform1f(uniforms.motion, reduced ? 0 : 1);
+      gl.uniform1f(uniforms.assembly, assembly);
       gl.uniform1f(uniforms.burst, burst);
       gl.uniform1f(uniforms.aspect, width / height);
       gl.uniform1f(uniforms.pointScale, ratio * Math.max(0.72, Math.min(canvas.clientWidth, canvas.clientHeight) / 700));
@@ -136,7 +151,7 @@ export default function WolfPage() {
       gl.uniform3f(uniforms.pointer, pointer.x, pointer.y, pointer.strength);
       gl.uniform2f(uniforms.origin, origin.x, origin.y);
       gl.drawArrays(gl.POINTS, 0, count);
-      if ((!reduced && !paused) || burstAge < 7 || Math.abs(pointer.target - pointer.strength) > 0.001
+      if ((!reduced && !paused) || (!paused && assembly < 1) || burstAge < 7 || Math.abs(pointer.target - pointer.strength) > 0.001
         || Math.abs(targetYaw - yaw) > 0.001 || Math.abs(targetPitch - pitch) > 0.001) schedule();
     };
     const fail = () => {
@@ -248,7 +263,7 @@ export default function WolfPage() {
         attribute("color", colors, 3);
         attribute("particle", particles, 4);
         count = particles.length / 4;
-        uniforms = Object.fromEntries(["time", "motion", "burst", "aspect", "pointScale", "rotation", "pointer", "origin"]
+        uniforms = Object.fromEntries(["time", "motion", "assembly", "burst", "aspect", "pointScale", "rotation", "pointer", "origin"]
           .map(name => [name, gl.getUniformLocation(program, name)]));
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
