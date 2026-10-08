@@ -98,3 +98,62 @@ test('drag rotates without bursting; releasing a tap triggers a small burst', as
   await canvas.click({ position: { x: 600, y: 350 } });
   await expect(canvas).toHaveAttribute('data-bursts', '1');
 });
+
+for (const touch of [false, true]) {
+  test(`${touch ? 'touch' : 'mouse'} vertical drag follows the pointer without bursting`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: touch ? { width: 390, height: 844 } : { width: 1280, height: 720 },
+      hasTouch: touch, isMobile: touch, reducedMotion: 'reduce',
+    });
+    const page = await context.newPage();
+    // Observe the rotation actually submitted to WebGL, not gesture bookkeeping.
+    await page.addInitScript(() => {
+      const locations = new WeakMap<WebGLUniformLocation, string>();
+      const getLocation = WebGLRenderingContext.prototype.getUniformLocation;
+      const setRotation = WebGLRenderingContext.prototype.uniform2f;
+      WebGLRenderingContext.prototype.getUniformLocation = function (program, name) {
+        const location = getLocation.call(this, program, name);
+        if (location) locations.set(location, name);
+        return location;
+      };
+      WebGLRenderingContext.prototype.uniform2f = function (location, x, y) {
+        if (location && locations.get(location) === 'rotation') {
+          (window as unknown as { wolfRotation: number[] }).wolfRotation = [x, y];
+        }
+        return setRotation.call(this, location, x, y);
+      };
+    });
+    await page.goto('/lab/wolf');
+    const canvas = page.locator('canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(1200);
+    const before = await canvas.screenshot();
+    const pitch = () => page.evaluate(() => (window as unknown as { wolfRotation: number[] }).wolfRotation[1]);
+    const initial = await pitch();
+    const x = touch ? 195 : 640;
+    const y = touch ? 422 : 360;
+    const client = touch ? await context.newCDPSession(page) : null;
+    const drag = async (from: number, to: number) => {
+      if (client) {
+        await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: from }] });
+        for (let step = 1; step <= 8; step++) {
+          await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: from + (to - from) * step / 8 }] });
+        }
+        await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else {
+        await page.mouse.move(x, from);
+        await page.mouse.down();
+        await page.mouse.move(x, to, { steps: 8 });
+        await page.mouse.up();
+      }
+      await page.waitForTimeout(1000);
+    };
+    await drag(y, y + 90);
+    expect(await pitch()).toBeLessThan(initial - 0.2);
+    expect((await canvas.screenshot()).equals(before)).toBe(false);
+    await drag(y + 90, y - 90);
+    expect(await pitch()).toBeGreaterThan(initial + 0.2);
+    await expect(canvas).toHaveAttribute('data-bursts', '0');
+    await context.close();
+  });
+}

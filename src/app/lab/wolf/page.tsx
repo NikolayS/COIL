@@ -278,7 +278,7 @@ export default function WolfPage() {
         if (Math.hypot(dx, dy) > 6) drag.moved = true;
         if (drag.moved) {
           turnX = drag.yaw + dx / Math.min(rect.width, rect.height) * Math.PI * 2;
-          turnY = Math.max(-1.4, Math.min(1.4, drag.pitch + dy / Math.min(rect.width, rect.height) * Math.PI));
+          turnY = Math.max(-1.4, Math.min(1.4, drag.pitch - dy / Math.min(rect.width, rect.height) * Math.PI));
           pointer.target = 0;
           pointer.tiltX = 0;
           pointer.tiltY = 0;
