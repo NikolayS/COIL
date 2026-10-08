@@ -7,6 +7,7 @@ export async function middleware(request: NextRequest) {
   const isDemo = request.cookies.get("coil_demo")?.value === "1";
 
   const publicPaths =
+    request.nextUrl.pathname === "/lab/wolf" ||
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/auth/callback") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
