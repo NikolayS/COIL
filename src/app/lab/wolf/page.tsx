@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import styles from "./wolf.module.css";
-import { facialDepth, replacedMuzzle, sculptWolfDetails } from "./sculpture";
+import { headHeight, cranialBack, earThickness, facialDepth, mouthLipAtDepth, replacedMuzzle, sculptWolfDetails } from "./sculpture";
 
 // The original artwork supplies color, not a textured plane. Every sample becomes
 // a free particle on (or inside) a sculpted head, with a separate 3D trajectory.
@@ -63,7 +63,8 @@ void main() {
   p += outward * burst * (0.8 + seed * 1.4);
   p.xy += vec2(-outward.y, outward.x) * burst * 0.32;
   float distance = max(1.1, 3.6 - p.z);
-  vec2 fit = aspect > 1.0 ? vec2(0.86 / aspect, 0.86) : vec2(0.86, 0.86 * aspect);
+  float framing = 0.86 * (1.0 - 0.09 * abs(sin(yaw)));
+  vec2 fit = aspect > 1.0 ? vec2(framing / aspect, framing) : vec2(framing, framing * aspect);
   gl_Position = vec4(p.xy * fit * 3.6, (distance - 3.6) * 0.15 * distance, distance);
   gl_PointSize = clamp(particle.z * pointScale * 3.6 / distance, 1.0, 12.0);
   float depthLight = clamp(0.75 + p.z * 0.27, 0.4, 1.2);
@@ -71,14 +72,16 @@ void main() {
   n.xz = mat2(cos(yaw), -sin(yaw), sin(yaw), cos(yaw)) * n.xz;
   n.yz = mat2(cos(pitch), -sin(pitch), sin(pitch), cos(pitch)) * n.yz;
   float illumination = abs(dot(n, normalize(vec3(-0.5, 0.8, 1.0))));
-  float sculptLight = length(n) > 0.5 ? (loose < -2.5 ? 0.30 + 0.90 * illumination : 0.64 + 0.48 * illumination) : 1.0;
+  float sculptLight = length(n) > 0.5 ? (loose < -2.5 ? 0.52 + 0.70 * illumination : 0.64 + 0.48 * illumination) : 1.0;
   tint = color * depthLight * sculptLight;
   opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion))
     * mix(0.28, 1.0, gather);
+  if (loose >= 0.0 && loose < 1.5 && length(n) > 0.5) opacity *= 0.045 + 0.955 * abs(n.z);
+  if (loose < -1.5 && loose > -2.5) opacity *= smoothstep(-0.05, 0.20, n.z);
   // Area-sampled pale fur would otherwise pile up into a white wire-like rim
   // at grazing angles. Keep the contour porous, like the rest of the coat.
-  if (loose < -2.5 && color.g > color.r * 0.85 && color.r > 0.24)
-    opacity *= 0.24 + 0.76 * smoothstep(0.0, 0.58, abs(n.z));
+  if (loose < -2.5 && color.g > color.r * 0.85 && color.r > 0.045)
+    opacity *= 0.025 + 0.975 * abs(n.z);
 }`;
 const fragment = `
 precision mediump float;
@@ -237,7 +240,7 @@ export default function WolfPage() {
         const gaussian = (x: number, y: number, cx: number, cy: number, sx: number, sy: number) =>
           Math.exp(-(((x - cx) / sx) ** 2) - ((y - cy) / sy) ** 2);
         const add = (x: number, y: number, z: number, r: number, g: number, b: number, loose: number, opacity: number) => {
-          positions.push(x, y, z);
+          positions.push(x, headHeight(y), z);
           colors.push(r, g, b);
           normals.push(0, 0, 0);
           particles.push(random(), loose, (1.6 + random() * 1.4) * (loose < -1 ? 1.35 : 1), opacity);
@@ -271,7 +274,10 @@ export default function WolfPage() {
           const cb = Math.max(b * (blueEye ? 1.7 : 1), 0.13);
           const frontScale = 1-surfaceZ/3.6;
           add(px*frontScale + (random() - 0.5) * jitter, py*frontScale + (random() - 0.5) * jitter, surfaceZ, cr, cg, cb, blueEye ? -2 : colored ? -1 : 0, 0.94);
-          if (!blueEye) {
+          if (blueEye) {
+            const eyeNormal=[Math.sign(px)*.72,.10,.69];
+            normals.splice(normals.length-3,3,...eyeNormal);
+          } else {
             const dx=(facialDepth(px+.003,py)-facialDepth(px-.003,py))/.006;
             const dy=(facialDepth(px,py+.003)-facialDepth(px,py-.003))/.006;
             const length=Math.hypot(dx,dy,1);
@@ -281,31 +287,53 @@ export default function WolfPage() {
           // thickness rather than several identical stacked image planes.
           if (random() < 0.22 && head > 0.18) {
             const depth = random();
-            const back = -0.20 - head * 0.46;
+            const back = cranialBack(px,py);
             const z = back + (front - back) * depth;
             const taper = 0.76 + 0.24 * Math.sin(depth * Math.PI / 2);
             add(px * taper, py * taper, z, cr * 0.43, cg * 0.48, cb * 0.57, 1, 0.53);
           }
-          if (random() < 0.12 && head > 0.22) {
-            add(px * 0.85, py * 0.91, -0.20 - head * 0.46, cr * 0.32, cg * 0.39, cb * 0.50, 0.7, 0.6);
+          // Real posterior coat follows a rounded occiput, not a faded copy
+          // of the front sheet. Ears retain a tapered cartilage shell in profile.
+          const ear=earThickness(px,py);
+          if (!blueEye && ear>.012) {
+            const shell=front-ear;
+            add(px*frontScale,py*frontScale,shell,cr*.64,cg*.66,cb*.69,.35,.77);
+            normals.splice(normals.length-3,3,0,0,-1);
+            if(random()<.45) {
+              const t=random();
+              add(px*frontScale,py*frontScale,front-ear*t,cr*.52,cg*.55,cb*.59,.35,.65);
+            }
+          } else if (!blueEye && random() < .46 && head > .22) {
+            const z=cranialBack(px,py)-.008-.012*Math.sin(py*71+Math.sin(px*29))+(random()-.5)*.012;
+            const grain=.35+.20*random()+.055*Math.sin(py*39+px*21);
+            add(px*.80+(random()-.5)*.008,py*.90+(random()-.5)*.010,z,grain*.83,grain*.91,grain,.7,.72);
+            const dx=(cranialBack(px+.003,py)-cranialBack(px-.003,py))/.006;
+            const dy=(cranialBack(px,py+.003)-cranialBack(px,py-.003))/.006;
+            const length=Math.hypot(dx,dy,1);
+            normals.splice(normals.length-3,3,dx/length,dy/length,-1/length);
           }
         }
-        const furColor = (x: number, y: number): [number, number, number] => {
+        const furColor = (x: number, y: number, depth?:number): [number, number, number] => {
           const ix=Math.max(0,Math.min(sample.width-1,Math.round((x/1.86+.5)*sample.width)));
           const iy=Math.max(0,Math.min(sample.height-1,Math.round((.5-y/2)*sample.height)));
           const i=(iy*sample.width+ix)*4;
           const painted=[pixels[i]/255,pixels[i+1]/255,pixels[i+2]/255];
           // The old fangs/blood/open mouth are never reused. Feather naturally
           // textured grey guard hairs into the retained cheek and brow artwork.
-          const edge=Math.min(1,Math.max(0,(((x-.028)/.365)**2+((y+.248)/.327)**2-.48)/.42));
+          const edge=Math.min(1,Math.max(0,(((x-.028)/.365)**2+((y+.205)/.407)**2-.48)/.42));
           const sourceWeight=y>-.27 ? edge : Math.abs(x-.028)>.29 ? edge*.5 : 0;
-          const chin=Math.max(0,Math.min(1,(-y-.325)/.18));
-          const stripe=.07*Math.sin(x*233+y*109)*Math.sin(y*179-x*91);
-          const bridge=.16*Math.exp(-(((x-.028)/.073)**2+((y+.016)/.17)**2));
-          const pale=.70-.34*chin+stripe-bridge;
-          return [0,1,2].map(k=>Math.max(.09,painted[k]*sourceWeight+(pale+k*.012)*(1-sourceWeight))) as [number,number,number];
+          const chin=Math.max(0,Math.min(1,(-y-.335)/.18));
+          const grain=Math.sin(x*127.1+y*311.7+(depth??0)*74.7)*43758.5453;
+          const stripe=.12*((grain-Math.floor(grain))-.5);
+          const bridge=.23*Math.exp(-(((x-.028)/.075)**2+((y+.015)/.20)**2));
+          const z=depth??facialDepth(x,y);
+          const lip=mouthLipAtDepth(z);
+          const seam=Math.exp(-(((y-lip+.009)/.031)**2))*Math.max(0,Math.min(1,(z-.29)/.15));
+          const jaw=depth!==undefined && y<lip-.017 ? .72 : 1;
+          const pale=(.84-.29*chin+stripe-bridge)*(1-seam*.86)*jaw;
+          return [0,1,2].map(k=>Math.max(.065,painted[k]*sourceWeight+(pale+k*.012)*(1-sourceWeight))) as [number,number,number];
         };
-        const detailBudget = Math.round(19500 * (sample.width / 336) ** 2);
+        const detailBudget = Math.round(26500 * (sample.width / 336) ** 2);
         const mesh = sculptWolfDetails(random, detailBudget, (p, color, normal, size) => {
           add(...p, ...color, -3, .96);
           normals.splice(normals.length - 3, 3, ...normal);
