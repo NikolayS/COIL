@@ -52,7 +52,7 @@ test('public particle-only scene animates and reacts to mouse and click', async 
 });
 
 test('full-screen scene fits a phone and responds to touch', async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
   const page = await context.newPage();
   await page.goto('/lab/wolf');
   const canvas = page.locator('canvas');
@@ -61,8 +61,12 @@ test('full-screen scene fits a phone and responds to touch', async ({ browser })
   const box = await canvas.boundingBox();
   expect(box?.width).toBe(390);
   expect(box?.height).toBe(844);
+  await page.waitForTimeout(1200);
+  const still = await canvas.screenshot();
   await page.touchscreen.tap(195, 422);
-  await expect(canvas).toHaveAttribute('data-ready', 'true');
+  await expect(canvas).toHaveAttribute('data-bursts', '1');
+  await page.waitForTimeout(150);
+  expect((await canvas.screenshot()).equals(still)).toBe(false);
   await context.close();
 });
 

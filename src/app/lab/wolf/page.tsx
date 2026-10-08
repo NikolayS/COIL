@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import styles from "./wolf.module.css";
+import { sculptWolfDetails } from "./sculpture";
 
 // The original artwork supplies color, not a textured plane. Every sample becomes
 // a free particle on (or inside) a sculpted head, with a separate 3D trajectory.
 const vertex = `
 attribute vec3 position;
 attribute vec3 color;
+attribute vec3 normal;
 attribute vec4 particle;
 uniform float time;
 uniform float motion;
@@ -25,7 +27,7 @@ void main() {
   float phase = seed * 62.83185;
   float loose = particle.y;
   float wander = pow(max(0.0, sin(time * 0.65 + phase)), 12.0);
-  float amplitude = (loose < 0.0 ? 0.003 + wander * 0.014 : 0.008 + loose * 0.025 + wander * 0.075) * motion;
+  float amplitude = loose < -2.5 ? 0.0 : (loose < 0.0 ? 0.003 + wander * 0.014 : 0.008 + loose * 0.025 + wander * 0.075) * motion;
   vec3 p = position;
   p += vec3(sin(time * 1.2 + phase + p.y * 4.0),
             cos(time * 0.9 + phase * 1.7 + p.x * 3.0),
@@ -65,7 +67,11 @@ void main() {
   gl_Position = vec4(p.xy * fit * 3.6, (distance - 3.6) * 0.15 * distance, distance);
   gl_PointSize = clamp(particle.z * pointScale * 3.6 / distance, 1.0, 12.0);
   float depthLight = clamp(0.75 + p.z * 0.27, 0.4, 1.2);
-  tint = color * depthLight;
+  vec3 n = normal;
+  n.xz = mat2(cos(yaw), -sin(yaw), sin(yaw), cos(yaw)) * n.xz;
+  n.yz = mat2(cos(pitch), -sin(pitch), sin(pitch), cos(pitch)) * n.yz;
+  float sculptLight = length(n) > 0.5 ? 0.40 + 0.75 * abs(dot(n, normalize(vec3(-0.4, 0.65, 1.0)))) : 1.0;
+  tint = color * depthLight * sculptLight;
   opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion))
     * mix(0.28, 1.0, gather);
 }`;
@@ -113,6 +119,9 @@ export default function WolfPage() {
     if (!program) { setFailed(true); return; }
     let uniforms: Record<string, WebGLUniformLocation | null> = {};
     let count = 0;
+    let meshCount = 0;
+    let meshBuffer: WebGLBuffer | null = null;
+    const pointAttributes: { buffer: WebGLBuffer; location: number; size: number }[] = [];
 
     const schedule = () => {
       if (!frame && loaded && !disposed && !document.hidden) frame = requestAnimationFrame(render);
@@ -150,6 +159,28 @@ export default function WolfPage() {
       gl.uniform2f(uniforms.rotation, yaw, pitch);
       gl.uniform3f(uniforms.pointer, pointer.x, pointer.y, pointer.strength);
       gl.uniform2f(uniforms.origin, origin.x, origin.y);
+      // A depth-only skin prevents rear petals and white muzzle particles from
+      // shining through the black nose. It is never visible as a solid object.
+      // Scattered startup/burst points remain free of this assembled occluder.
+      if (meshBuffer && assembly === 1 && burst < .002) {
+        for (const attribute of pointAttributes) gl.disableVertexAttribArray(attribute.location);
+        const position = pointAttributes[0].location;
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshBuffer);
+        gl.enableVertexAttribArray(position);
+        gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 0, 0);
+        gl.vertexAttrib4f(pointAttributes[3].location, .5, -3, 1, 1);
+        gl.colorMask(false, false, false, false);
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        gl.polygonOffset(1, 1);
+        gl.drawArrays(gl.TRIANGLES, 0, meshCount);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        gl.colorMask(true, true, true, true);
+      }
+      for (const attribute of pointAttributes) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, attribute.buffer);
+        gl.enableVertexAttribArray(attribute.location);
+        gl.vertexAttribPointer(attribute.location, attribute.size, gl.FLOAT, false, 0, 0);
+      }
       gl.drawArrays(gl.POINTS, 0, count);
       if ((!reduced && !paused) || (!paused && assembly < 1) || burstAge < 7 || Math.abs(pointer.target - pointer.strength) > 0.001
         || Math.abs(targetYaw - yaw) > 0.001 || Math.abs(targetPitch - pitch) > 0.001) schedule();
@@ -188,7 +219,7 @@ export default function WolfPage() {
         if (!ctx) throw new Error("Image sampling unavailable");
         ctx.drawImage(image, 0, 0, sample.width, sample.height);
         const pixels = ctx.getImageData(0, 0, sample.width, sample.height).data;
-        const positions: number[] = [], colors: number[] = [], particles: number[] = [];
+        const positions: number[] = [], colors: number[] = [], particles: number[] = [], normals: number[] = [];
         let randomState = 7319;
         const random = () => {
           randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
@@ -199,6 +230,7 @@ export default function WolfPage() {
         const add = (x: number, y: number, z: number, r: number, g: number, b: number, loose: number, opacity: number) => {
           positions.push(x, y, z);
           colors.push(r, g, b);
+          normals.push(0, 0, 0);
           particles.push(random(), loose, (1.6 + random() * 1.4) * (loose < -1 ? 1.35 : 1), opacity);
         };
         for (let y = 0; y < sample.height; y++) for (let x = 0; x < sample.width; x++) {
@@ -211,15 +243,18 @@ export default function WolfPage() {
           if (light > 0.12 && !colored && random() > 0.77) continue;
           const px = (x / sample.width - 0.5) * 1.86;
           const py = (0.5 - y / sample.height) * 2;
-          // Anatomical relief: a rounded cranium, cheek masses, forward muzzle
-          // and nose, recessed eye sockets, and separately raised rose petals.
+          // The original artwork still colors the cranium, cheek masses and eyes;
+          // explicit meshes below supply the protruding snout and flower.
           const head = gaussian(px, py, 0, 0.03, 0.65, 0.80);
-          const muzzle = gaussian(px, py, 0.02, -0.29, 0.27, 0.35);
-          const nose = gaussian(px, py, 0.02, -0.35, 0.16, 0.12);
+          // Replace the central muzzle and whole bloom with actual mesh surfaces.
+          const bloomRegion = px < -.36 && py < -.22 && py > -.72;
+          const stemRegion = py < -.365 && py > -.445 && px > -.40 && light < .20;
+          if (bloomRegion || stemRegion) { continue; }
           const cheeks = gaussian(Math.abs(px), py, 0.38, -0.03, 0.22, 0.30);
           const eyes = gaussian(Math.abs(px), py, 0.23, 0.19, 0.12, 0.10);
-          const rose = gaussian(px, py, -0.57, -0.43, 0.24, 0.27);
-          const front = -0.13 + head * 0.42 + muzzle * 0.40 + nose * 0.17 + cheeks * 0.12 - eyes * 0.11 + rose * 0.50;
+          let front = -0.13 + head * 0.42 + cheeks * 0.12 - eyes * 0.11;
+          // Join the retained open jaw and teeth to the new snout's underside.
+          if (py < -.40 && py > -.66 && Math.abs(px - .038) < .24) front += .20 * (1 - Math.abs(px - .038) / .3);
           const jitter = 1.4 / sample.width;
           const blueEye = b > r * 1.25 && b > 0.35;
           const surfaceZ = front + (blueEye ? 0.11 : 0) + (random() - 0.5) * 0.045;
@@ -230,7 +265,7 @@ export default function WolfPage() {
           add(px + (random() - 0.5) * jitter, py + (random() - 0.5) * jitter, surfaceZ, cr, cg, cb, blueEye ? -2 : colored ? -1 : 0, 0.94);
           // A closed curved back and random interior samples produce real
           // thickness rather than several identical stacked image planes.
-          if (random() < 0.36 && head > 0.18) {
+          if (random() < 0.22 && head > 0.18) {
             const depth = random();
             const back = -0.20 - head * 0.46;
             const z = back + (front - back) * depth;
@@ -241,6 +276,20 @@ export default function WolfPage() {
             add(px * 0.85, py * 0.91, -0.20 - head * 0.46, cr * 0.32, cg * 0.39, cb * 0.50, 0.7, 0.6);
           }
         }
+        const detailBudget = Math.round(16500 * (sample.width / 336) ** 2);
+        const mesh = sculptWolfDetails(random, detailBudget, (p, color, normal, size) => {
+          add(...p, ...color, -3, .96);
+          normals.splice(normals.length - 3, 3, ...normal);
+          particles[particles.length - 2] *= size;
+        });
+        canvas.dataset.sculptedParticles = String(detailBudget);
+        canvas.dataset.meshTriangles = String(mesh.triangleCount);
+        meshBuffer = gl.createBuffer();
+        if (!meshBuffer) throw new Error("Sculpture buffer unavailable");
+        buffers.push(meshBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.positions), gl.STATIC_DRAW);
+        meshCount = mesh.positions.length / 3;
         for (let i = 0; i < 650; i++) {
           const angle = random() * Math.PI * 2;
           const radius = 0.85 + random() * 0.58;
@@ -258,9 +307,11 @@ export default function WolfPage() {
           const location = gl.getAttribLocation(program, name);
           gl.enableVertexAttribArray(location);
           gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+          pointAttributes.push({ buffer, location, size });
         };
         attribute("position", positions, 3);
         attribute("color", colors, 3);
+        attribute("normal", normals, 3);
         attribute("particle", particles, 4);
         count = particles.length / 4;
         uniforms = Object.fromEntries(["time", "motion", "assembly", "burst", "aspect", "pointScale", "rotation", "pointer", "origin"]
