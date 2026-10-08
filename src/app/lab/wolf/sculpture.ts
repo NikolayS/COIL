@@ -1,7 +1,7 @@
 /**
  * Reproducible, explicit triangle-surface models in the logo's coordinate frame.
  * +Z is forward. The rose has separate rolled petals, not an image extrusion;
- * the rhinarium has open nostril apertures with inset cavity walls.
+ * the wolf has a unified implicit facial skin and a seated canine rhinarium.
  * These meshes are area-sampled into the scene's existing particle budget.
  */
 type V = [number, number, number];
@@ -12,31 +12,45 @@ const cross = (a: V, b: V): V => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]
 const mix = (a: number, b: number, t: number) => a + (b-a)*t;
 const TAU = Math.PI * 2;
 
-/** A continuous anatomical shell, shared by textured fur and its 3D skin. */
+/** One continuous skin: the muzzle grows out of the cheeks and nasal bridge.
+ * Smooth implicit volumes avoid a loft seam or a separate conical snout. */
 export function facialDepth(x: number, y: number) {
   const bump=(cx:number,cy:number,sx:number,sy:number)=>Math.exp(-(((x-cx)/sx)**2+((y-cy)/sy)**2));
-  // The forehead is the front of a rounded cranium, not a ramp running all
-  // the way to the nose. The nasal bridge is a separate lengthwise volume.
   const skull=Math.sqrt(Math.max(0,1-(x/.69)**2-((y-.08)/.86)**2));
-  const cheeks=bump(Math.sign(x)*.37,-.07,.22,.30);
-  const eyes=bump(Math.sign(x)*.23,.19,.115,.09);
-  const brow=bump(Math.sign(x)*.18,.30,.18,.11);
-  return -.22+skull*.57+cheeks*.085-eyes*.070+brow*.050;
+  const base=-.22+skull*.57+bump(Math.sign(x)*.37,-.07,.22,.30)*.085
+    -bump(Math.sign(x)*.23,.19,.115,.09)*.070+bump(Math.sign(x)*.18,.30,.18,.11)*.050;
+  // Fields overlap below the skin; their union has no visible intersection.
+  const components = [
+    [.028,-.215,.465,.172,.138,.240], // snout, with a rounded forward end
+    [.028,-.025,.375,.131,.285,.180], // nasal bridge into the brow stop
+    [-.215,-.145,.228,.205,.240,.185],
+    [.255,-.145,.228,.205,.240,.185], // cheek pads flank the snout
+    [.028,-.352,.312,.232,.117,.233], // connected, closed lower jaw
+  ];
+  const terms=components.map(([cx,cy,cz,rx,ry,rz])=>[
+    Math.exp(-2*(((x-cx)/rx)**2+((y-cy)/ry)**2)),cz,rz,
+  ]);
+  const field=(z:number)=>terms.reduce((v,[weight,cz,rz])=>v+weight*Math.exp(-2*((z-cz)/rz)**2),0);
+  // A soft union with the original cranium uses its own shallow depth field.
+  const union=(z:number)=>field(z)+Math.exp(-2)*Math.exp((base-z)*16);
+  let lo=base,hi=.82;
+  for(let i=0;i<19;i++) {const mid=(lo+hi)/2;if(union(mid)>Math.exp(-2))lo=mid;else hi=mid;}
+  return (lo+hi)/2;
 }
 
-/** Original open-mouth artwork is replaced by a closed, fully modeled muzzle. */
+/** Replace the painted open bite while retaining the original eyes and ruff. */
 export function replacedMuzzle(x: number, y: number) {
-  return ((x-.038)/.305)**2+((y+.225)/.282)**2 < 1
-    || ((x-.038)/.245)**2+((y+.488)/.128)**2 < 1;
+  return ((x-.028)/.365)**2+((y+.248)/.327)**2 < 1;
 }
 
 export function sculptWolfDetails(random: () => number, budget: number,
-  add: (position: V, color: V, normal: V, size: number) => void) {
+  add: (position: V, color: V, normal: V, size: number) => void,
+  furColor: (x: number, y: number) => V) {
   const triangles: Triangle[] = [];
   const triangle = (a: V, b: V, c: V, color: V) => {
     const n = cross(sub(b, a), sub(c, a));
     const length = Math.hypot(...n);
-    if (length > 1e-9) triangles.push({ a, b, c, color, normal: n.map(x => x/length) as V, area: length/2 * (color[1] > .5 ? 8 : color[0] > .15 && color[1] < .1 ? 3 : color[0] < .34 && color[1] > color[0] ? 2.4 : 1) });
+    if (length > 1e-9) triangles.push({ a, b, c, color, normal: n.map(x => x/length) as V, area: length/2 * (color[1] > .5 ? 2.2 : color[0] > .15 && color[1] < .1 ? 3 : color[0] < .34 && color[1] > color[0] ? 2.4 : 1) });
   };
   const surface = (fn: Surface, nu: number, nv: number, color: V,
     include: (p: V) => boolean = () => true) => {
@@ -63,72 +77,41 @@ export function sculptWolfDetails(random: () => number, budget: number,
   const line = (path: (t: number) => V, radius: (t: number) => number, color: V, steps=48) =>
     tube(t=>project(path(t)),radius,color,steps);
 
-  // A proper canine muzzle is a horizontal, tapering volume projecting out
-  // of the stop below the eyes. Cross-sections have independent dorsal and
-  // ventral heights; no part is an extruded patch of the front logo.
-  const muzzle = (t: number, angle: number): V => {
-    const width=mix(.320,.114,t**.80);
-    const top=mix(.135,-.137,t**.48);
-    const bottom=mix(-.385,-.294,t);
-    const centre=(top+bottom)/2, height=(top-bottom)/2;
-    return [.038+width*Math.cos(angle),centre+height*Math.sin(angle),mix(.205,.768,t)];
-  };
-  // Separated fur planes retain the wolf's pale muzzle and charcoal underside.
-  for(let band=0;band<16;band++) {
-    const angle=(band+.5)/16*TAU;
-    const dorsal=Math.sin(angle);
-    const shade=dorsal>-.25 ? .69+.16*Math.max(0,dorsal) : .30;
-    shape((u,v)=>muzzle(u,(band+v)/16*TAU),56,6,[shade,shade*1.015,shade*1.025]);
+  // This is the SAME skin function used by every original fur sample above
+  // and beside it. Area sampling makes turned cheeks as dense as the front.
+  // No rear muzzle rim, flat cap, separate jaw sheet or white outline exists.
+  const step=.007;
+  for(let x=-.342;x<.398;x+=step)for(let y=-.580;y<.084;y+=step) {
+    const corners: V[]=[[x,y,0],[x+step,y,0],[x+step,y+step,0],[x,y+step,0]];
+    if(!corners.every(p=>replacedMuzzle(p[0],p[1])))continue;
+    const color=furColor(x+step/2,y+step/2);
+    const p=corners.map(([a,b])=>project([a,b,facialDepth(a,b)]));
+    triangle(p[0],p[1],p[2],color);triangle(p[0],p[2],p[3],color);
   }
-  // Close the forward fur surface behind the leather; nothing can shine
-  // through the dark nose in side or quarter views.
-  shape((u,v)=>{const rim=muzzle(1,u*TAU);return [mix(.038,rim[0],v),mix(-.216,rim[1],v),.769];},64,14,[.20,.22,.23]);
 
-  // Compact rhinarium: broad top, tapered underside and only a shallow lip.
-  // Its side walls converge into the muzzle instead of forming a round tube.
-  const nose = (u: number,v: number): V => {
-    const angle=u*TAU,s=Math.sin(angle),r=v;
-    return [.038+.119*r*Math.cos(angle)*(1+.27*s),
-      -.209+.072*r*s,
-      .791+.016*(1-r*r)-.016*Math.max(0,-s)*r];
+  // A small rounded canine rhinarium seated on the forward pad. Its black
+  // leather has volume, but no disc-shaped rim or two bright pig nostrils.
+  const nose=(u:number,v:number):V=>{
+    const a=u*TAU,latitude=(v-.5)*Math.PI,s=Math.sin(a);
+    const r=Math.cos(latitude);
+    return [.028+.105*r*Math.cos(a)*(1+.16*s),-.227+.064*r*s,
+      .690+.036*Math.sin(latitude)];
   };
-  const nostrils: V[]=[[-.046,-.205,.797],[.122,-.205,.797]];
-  const noNostril = (p: V) => nostrils.every(c=>((p[0]-c[0])/.024)**2+((p[1]-c[1])/.010)**2>1);
-  shape(nose,72,24,[.045,.055,.068],noNostril);
-  shape((u,v)=>{const p=nose(u,1);return [mix(p[0],.038+(p[0]-.038)*.88,v),mix(p[1],-.215+(p[1]+.209)*.90,v),mix(p[2],.746,v)];},72,10,[.037,.043,.052]);
-  for (const c of nostrils) {
-    shape((u,v)=>{const a=u*TAU,r=1-v*.75;return [c[0]+Math.cos(a)*.024*r,c[1]+Math.sin(a)*.010*r,c[2]-.032*v];},32,8,[.006,.009,.014]);
-    line(t=>{const a=t*Math.PI;return [c[0]+Math.cos(a)*.025,c[1]+Math.sin(a)*.0105,c[2]+.001];},()=>.0014,[.115,.13,.15],24);
-  }
-  // A broken upper glint, not a bright circular border around the snout.
-  line(t=>[mix(-.031,.082,t),-.145-.005*(t*2-1)**2,.787],()=>.0018,[.20,.23,.26],30);
-  line(t=>[.038,mix(-.270,-.302,t),mix(.780,.746,t)],()=>.0025,[.023,.029,.037]);
+  shape(nose,72,32,[.061,.075,.090]);
+  // Subtle nostril creases on the sloping lateral wings, not a frontal ring.
+  for(const sign of [-1,1])line(t=>[
+    .028+sign*(.069+.020*Math.sin(t*Math.PI)),
+    -.222+.012*Math.cos(t*Math.PI),.717-.006*Math.sin(t*Math.PI),
+  ],()=>.0032,[.016,.024,.031],24);
+  line(t=>[mix(-.010,.066,t),-.170-.002*(t*2-1)**2,.708],()=>.0012,[.17,.19,.21],28);
 
-  // Closed lips curve from the nose back to the cheek. No enamel geometry is
-  // generated: neither incisors, canine tips nor buried tooth depth meshes.
-  const lip = (sign: number,t: number): V => [
-    .038+sign*mix(.100,.300,t), mix(-.303,-.380,t)+.007*Math.sin(t*Math.PI), mix(.752,.205,t),
-  ];
-  for(const sign of [-1,1]) {
-    // A broad connected mandibular surface tapers forward under the muzzle.
-    for(let band=0;band<8;band++) shape((u,v)=>{
-      const t=u,angle=(band+v)/8*Math.PI/2,p=lip(sign,t);
-      const width=Math.abs(p[0]-.038);
-      const drop=mix(.065,.105,t)*Math.sin(angle);
-      return [.038+sign*width*Math.cos(angle),p[1]-.010-drop,p[2]-.014];
-    },56,6,[.39-band*.020,.405-band*.020,.42-band*.020]);
-    line(t=>lip(sign,t),t=>mix(.0055,.008,t),[.023,.030,.038]);
-    // The rear mandible blends into the original chin/ruff. Closing this
-    // lower shell avoids an empty black oval left by the old open mouth.
-    shape((u,v)=>{
-      const a=u*Math.PI/2;
-      const x=.038+sign*mix(.300,.242,v)*Math.cos(a);
-      const y=-.390-(.105+.130*v)*Math.sin(a);
-      return [x,y,mix(.191,facialDepth(x,y)+.012,v)];
-    },28,16,[.30,.32,.34]);
-  }
-  // Rounded chin cap meets both halves of the mandible, behind the nose.
-  shape((u,v)=>{const a=u*Math.PI;return [.038+.100*Math.cos(a)*v,-.313-.065*Math.sin(a)*v,.738+.011*(1-v)];},48,12,[.27,.29,.31]);
+  // A quiet closed mouth follows the curved skin from beneath the nose
+  // into both cheeks. All jaw volume is part of the common skin above.
+  line(t=>{const y=mix(-.287,-.316,t);return [.028,y,facialDepth(.028,y)+.006];},()=>.0024,[.055,.064,.071],20);
+  for(const sign of [-1,1])line(t=>{
+    const x=.028+sign*.240*t,y=-.318-.017*Math.sin(t*Math.PI*.7);
+    return [x,y,facialDepth(x,y)+.005];
+  },t=>.003+.002*Math.sin(t*Math.PI),[.10,.11,.12],54);
 
   // A single orthonormal growth frame connects stem, calyx and folded petals.
   // Its axis points predominantly left (-X), with a forward lean that lets
@@ -137,17 +120,17 @@ export function sculptWolfDetails(random: () => number, budget: number,
   const flowerAcross: V=[.6400,0,.7684];
   const flowerUp: V=[-.0615,.9968,.0512];
   const rosePoint = (p: V): V => [0,1,2].map(k=>
-    [-.525,-.314,.774][k]+flowerAcross[k]*p[0]*1.08+flowerUp[k]*p[1]*1.03+flowerAxis[k]*p[2]
+    [-.525,-.314,.724][k]+flowerAcross[k]*p[0]*1.08+flowerUp[k]*p[1]*1.03+flowerAxis[k]*p[2]
   ) as V;
   // The stem passes through the closed lip seam; there are no visible teeth. At the
   // flower end it curves into the calyx along the flower's actual growth axis.
   // Shared frame makes this cubic tangent exactly opposite the growth axis.
-  const control: V[]=[rosePoint([0,0,-.070]),rosePoint([0,0,-.120]),[-.20,-.309,.712],[.79,-.291,.719]];
+  const control: V[]=[rosePoint([0,0,-.070]),rosePoint([0,0,-.120]),[-.20,-.318,.649],[.79,-.291,.669]];
   const stem = (t: number): V => {
     return [0,1,2].map(k=>(1-t)**3*control[0][k]+3*(1-t)**2*t*control[1][k]+3*(1-t)*t*t*control[2][k]+t**3*control[3][k]) as V;
   };
   line(stem,()=>.007,[.13,.15,.065],100);
-  line(t=>[mix(.33,.51,t),-.303+.027*Math.sin(t*Math.PI),.710],t=>.0025*Math.sin(t*Math.PI),[.20,.22,.09],30);
+  line(t=>[mix(.33,.51,t),-.303+.027*Math.sin(t*Math.PI),.660],t=>.0025*Math.sin(t*Math.PI),[.20,.22,.09],30);
 
   const rose = (p: V): V => project(rosePoint(p));
   // The calyx narrows to the stem at local -Z, not the side of the bloom.
@@ -221,7 +204,7 @@ export function sculptWolfDetails(random: () => number, budget: number,
     const p=t.a.map((x,k)=>x*(1-a)+t.b[k]*a*(1-b)+t.c[k]*a*b) as V;
     add(p,t.color,t.normal,t.color[1]>.5?.78:t.color[0]>.4?1.06:.90);
   }
-  // Explicit anatomical muzzle/forehead mesh. It carries the original fur
+  // Shared anatomical skin under the retained forehead/cheek fur. It carries the original fur
   // samples above it and prevents the far eye/cheek from showing through.
   // A small inset leaves the surface porous while hiding the opposite side.
   const skin: number[]=[];

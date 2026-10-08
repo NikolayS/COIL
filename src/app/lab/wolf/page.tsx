@@ -75,6 +75,10 @@ void main() {
   tint = color * depthLight * sculptLight;
   opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion))
     * mix(0.28, 1.0, gather);
+  // Area-sampled pale fur would otherwise pile up into a white wire-like rim
+  // at grazing angles. Keep the contour porous, like the rest of the coat.
+  if (loose < -2.5 && color.g > color.r * 0.85 && color.r > 0.24)
+    opacity *= 0.24 + 0.76 * smoothstep(0.0, 0.58, abs(n.z));
 }`;
 const fragment = `
 precision mediump float;
@@ -249,7 +253,7 @@ export default function WolfPage() {
           const px = (x / sample.width - 0.5) * 1.86;
           const py = (0.5 - y / sample.height) * 2;
           // The original artwork still colors the cranium, cheek masses and eyes;
-          // explicit meshes below supply the protruding snout and flower.
+          // a shared skin joins it to the modeled closed muzzle and flower.
           const head = gaussian(px, py, 0, 0.03, 0.65, 0.80);
           // Replace the central muzzle and whole bloom with actual mesh surfaces.
           const bloomRegion = px < -.36 && py < -.22 && py > -.72;
@@ -286,12 +290,27 @@ export default function WolfPage() {
             add(px * 0.85, py * 0.91, -0.20 - head * 0.46, cr * 0.32, cg * 0.39, cb * 0.50, 0.7, 0.6);
           }
         }
+        const furColor = (x: number, y: number): [number, number, number] => {
+          const ix=Math.max(0,Math.min(sample.width-1,Math.round((x/1.86+.5)*sample.width)));
+          const iy=Math.max(0,Math.min(sample.height-1,Math.round((.5-y/2)*sample.height)));
+          const i=(iy*sample.width+ix)*4;
+          const painted=[pixels[i]/255,pixels[i+1]/255,pixels[i+2]/255];
+          // The old fangs/blood/open mouth are never reused. Feather naturally
+          // textured grey guard hairs into the retained cheek and brow artwork.
+          const edge=Math.min(1,Math.max(0,(((x-.028)/.365)**2+((y+.248)/.327)**2-.48)/.42));
+          const sourceWeight=y>-.27 ? edge : Math.abs(x-.028)>.29 ? edge*.5 : 0;
+          const chin=Math.max(0,Math.min(1,(-y-.325)/.18));
+          const stripe=.07*Math.sin(x*233+y*109)*Math.sin(y*179-x*91);
+          const bridge=.16*Math.exp(-(((x-.028)/.073)**2+((y+.016)/.17)**2));
+          const pale=.70-.34*chin+stripe-bridge;
+          return [0,1,2].map(k=>Math.max(.09,painted[k]*sourceWeight+(pale+k*.012)*(1-sourceWeight))) as [number,number,number];
+        };
         const detailBudget = Math.round(19500 * (sample.width / 336) ** 2);
         const mesh = sculptWolfDetails(random, detailBudget, (p, color, normal, size) => {
           add(...p, ...color, -3, .96);
           normals.splice(normals.length - 3, 3, ...normal);
           particles[particles.length - 2] *= size;
-        });
+        }, furColor);
         canvas.dataset.sculptedParticles = String(detailBudget);
         canvas.dataset.meshTriangles = String(mesh.triangleCount);
         meshBuffer = gl.createBuffer();
