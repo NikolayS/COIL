@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import styles from "./wolf.module.css";
-import { sculptWolfDetails } from "./sculpture";
+import { facialDepth, sculptWolfDetails } from "./sculpture";
 
 // The original artwork supplies color, not a textured plane. Every sample becomes
 // a free particle on (or inside) a sculpted head, with a separate 3D trajectory.
@@ -70,7 +70,8 @@ void main() {
   vec3 n = normal;
   n.xz = mat2(cos(yaw), -sin(yaw), sin(yaw), cos(yaw)) * n.xz;
   n.yz = mat2(cos(pitch), -sin(pitch), sin(pitch), cos(pitch)) * n.yz;
-  float sculptLight = length(n) > 0.5 ? 0.40 + 0.75 * abs(dot(n, normalize(vec3(-0.4, 0.65, 1.0)))) : 1.0;
+  float illumination = abs(dot(n, normalize(vec3(-0.5, 0.8, 1.0))));
+  float sculptLight = length(n) > 0.5 ? (loose < -2.5 ? 0.30 + 0.90 * illumination : 0.64 + 0.48 * illumination) : 1.0;
   tint = color * depthLight * sculptLight;
   opacity = particle.w * (0.84 + 0.16 * sin(phase + time * 1.6 * motion))
     * mix(0.28, 1.0, gather);
@@ -79,7 +80,9 @@ const fragment = `
 precision mediump float;
 varying vec3 tint;
 varying float opacity;
+uniform float skinPass;
 void main() {
+  if (skinPass > 0.5) { gl_FragColor = vec4(0.0); return; }
   float radius = length(gl_PointCoord - 0.5) * 2.0;
   if (radius > 1.0) discard;
   float alpha = (1.0 - smoothstep(0.25, 1.0, radius)) * opacity;
@@ -169,6 +172,7 @@ export default function WolfPage() {
         gl.enableVertexAttribArray(position);
         gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 0, 0);
         gl.vertexAttrib4f(pointAttributes[3].location, .5, -3, 1, 1);
+        gl.uniform1f(uniforms.skinPass, 1);
         gl.colorMask(false, false, false, false);
         gl.enable(gl.POLYGON_OFFSET_FILL);
         gl.polygonOffset(1, 1);
@@ -181,6 +185,7 @@ export default function WolfPage() {
         gl.enableVertexAttribArray(attribute.location);
         gl.vertexAttribPointer(attribute.location, attribute.size, gl.FLOAT, false, 0, 0);
       }
+      gl.uniform1f(uniforms.skinPass, 0);
       gl.drawArrays(gl.POINTS, 0, count);
       if ((!reduced && !paused) || (!paused && assembly < 1) || burstAge < 7 || Math.abs(pointer.target - pointer.strength) > 0.001
         || Math.abs(targetYaw - yaw) > 0.001 || Math.abs(targetPitch - pitch) > 0.001) schedule();
@@ -249,20 +254,25 @@ export default function WolfPage() {
           // Replace the central muzzle and whole bloom with actual mesh surfaces.
           const bloomRegion = px < -.36 && py < -.22 && py > -.72;
           const stemRegion = py < -.365 && py > -.445 && px > -.40 && light < .20;
-          if (bloomRegion || stemRegion) { continue; }
-          const cheeks = gaussian(Math.abs(px), py, 0.38, -0.03, 0.22, 0.30);
-          const eyes = gaussian(Math.abs(px), py, 0.23, 0.19, 0.12, 0.10);
-          let front = -0.13 + head * 0.42 + cheeks * 0.12 - eyes * 0.11;
-          // Join the retained open jaw and teeth to the new snout's underside.
-          if (py < -.40 && py > -.66 && Math.abs(px - .038) < .24) front += .20 * (1 - Math.abs(px - .038) / .3);
+          const noseRegion = ((px-.038)/.128)**2 + ((py+.328)/.103)**2 < 1.04;
+          const mouthRegion = ((px-.038)/.168)**2 + ((py+.488)/.079)**2 < 1;
+          if (bloomRegion || stemRegion || noseRegion || mouthRegion) { continue; }
+          const front = facialDepth(px,py);
           const jitter = 1.4 / sample.width;
           const blueEye = b > r * 1.25 && b > 0.35;
-          const surfaceZ = front + (blueEye ? 0.11 : 0) + (random() - 0.5) * 0.045;
+          const surfaceZ = front + (blueEye ? 0.045 : 0) + (random() - 0.5) * 0.045;
           // Slightly lit charcoal preserves the black fur and nose on black.
           const cr = Math.max(r * (blueEye ? 0.7 : 0.95), 0.085);
           const cg = Math.max(g * (blueEye ? 1.35 : 0.96), 0.105);
           const cb = Math.max(b * (blueEye ? 1.7 : 1), 0.13);
-          add(px + (random() - 0.5) * jitter, py + (random() - 0.5) * jitter, surfaceZ, cr, cg, cb, blueEye ? -2 : colored ? -1 : 0, 0.94);
+          const frontScale = 1-surfaceZ/3.6;
+          add(px*frontScale + (random() - 0.5) * jitter, py*frontScale + (random() - 0.5) * jitter, surfaceZ, cr, cg, cb, blueEye ? -2 : colored ? -1 : 0, 0.94);
+          if (!blueEye) {
+            const dx=(facialDepth(px+.003,py)-facialDepth(px-.003,py))/.006;
+            const dy=(facialDepth(px,py+.003)-facialDepth(px,py-.003))/.006;
+            const length=Math.hypot(dx,dy,1);
+            normals.splice(normals.length-3,3,-dx/length,-dy/length,1/length);
+          }
           // A closed curved back and random interior samples produce real
           // thickness rather than several identical stacked image planes.
           if (random() < 0.22 && head > 0.18) {
@@ -276,7 +286,7 @@ export default function WolfPage() {
             add(px * 0.85, py * 0.91, -0.20 - head * 0.46, cr * 0.32, cg * 0.39, cb * 0.50, 0.7, 0.6);
           }
         }
-        const detailBudget = Math.round(16500 * (sample.width / 336) ** 2);
+        const detailBudget = Math.round(19500 * (sample.width / 336) ** 2);
         const mesh = sculptWolfDetails(random, detailBudget, (p, color, normal, size) => {
           add(...p, ...color, -3, .96);
           normals.splice(normals.length - 3, 3, ...normal);
@@ -314,7 +324,7 @@ export default function WolfPage() {
         attribute("normal", normals, 3);
         attribute("particle", particles, 4);
         count = particles.length / 4;
-        uniforms = Object.fromEntries(["time", "motion", "assembly", "burst", "aspect", "pointScale", "rotation", "pointer", "origin"]
+        uniforms = Object.fromEntries(["time", "motion", "assembly", "burst", "aspect", "pointScale", "rotation", "pointer", "origin", "skinPass"]
           .map(name => [name, gl.getUniformLocation(program, name)]));
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
