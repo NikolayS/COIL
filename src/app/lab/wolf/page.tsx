@@ -255,7 +255,7 @@ export default function WolfPage() {
           const bloomRegion = px < -.36 && py < -.22 && py > -.72;
           const stemRegion = py < -.365 && py > -.445 && px > -.40 && light < .20;
           const noseRegion = ((px-.038)/.128)**2 + ((py+.328)/.103)**2 < 1.04;
-          const mouthRegion = ((px-.038)/.168)**2 + ((py+.488)/.079)**2 < 1;
+          const mouthRegion = ((px-.038)/.205)**2 + ((py+.488)/.103)**2 < 1;
           if (bloomRegion || stemRegion || noseRegion || mouthRegion) { continue; }
           const front = facialDepth(px,py);
           const jitter = 1.4 / sample.width;

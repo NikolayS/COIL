@@ -81,31 +81,54 @@ export function sculptWolfDetails(random: () => number, budget: number,
   line(t=>[mix(-.043,.115,t),-.239-.008*(t*2-1)**2,.671+.009*Math.sin(t*Math.PI)],()=>.0028,[.34,.39,.44]);
   line(t=>[.038,-.398-t*.041,.669-t*.038],()=>.003,[.025,.034,.045]);
 
-  // Deep mouth cavity and real enamel: long outer canines, short incisors.
-  shape((u,v)=>{const a=u*TAU,b=v*Math.PI;return [.038+.161*Math.cos(a)*Math.sin(b),-.488+.076*Math.sin(a)*Math.sin(b),.49+.066*Math.cos(b)];},64,28,[.016,.021,.028]);
+  // A shallow closed bite belongs to the muzzle, not a separate smiling
+  // tooth ring. The lip seam turns back into the cheek on either side.
+  const lip = (sign: number, t: number): V => [
+    .038+sign*.213*t, -.448+.006*t+.016*t*t, .625-.231*t*t,
+  ];
+  shape((u,v)=>{const a=u*TAU,b=v*Math.PI;return [.038+.188*Math.cos(a)*Math.sin(b),-.467+.032*Math.sin(a)*Math.sin(b),.540+.066*Math.cos(b)];},64,24,[.014,.019,.024]);
   for(const sign of [-1,1]) {
-    line(t=>[.038+sign*(.016+.159*t),-.425-.023*Math.sin(t*Math.PI),.632-.155*t],()=>.008,[.045,.055,.068]);
-    line(t=>[.038+sign*.15*Math.sin(t*Math.PI/2),-.570+.097*(1-Math.cos(t*Math.PI/2)),.554-.095*t],()=>.008,[.065,.079,.095]);
-    // Slightly recurved taper, rounded at the gum, fine at the tip.
-    shape((u,v)=>{const a=u*TAU,r=.016*(1-v)**.72;return [.038+sign*(.123-.015*v)+r*Math.cos(a),-.438-.082*v,.589+.028*Math.sin(v*Math.PI)+r*Math.sin(a)];},24,20,[.73,.78,.80]);
-    shape((u,v)=>{const a=u*TAU,r=.014*(1-v)**.6;return [.038+sign*(.112-.010*v)+r*Math.cos(a),-.553+.048*v,.568+r*Math.sin(a)];},20,14,[.54,.60,.63]);
+    // The furred lower mandible wraps behind the lip and joins the existing
+    // chin surface; it is not an outline suspended in front of the face.
+    for(let band=0;band<5;band++) shape((u,v)=>{
+      const t=u,drop=(band+v)/5,p=lip(sign,t);
+      const x=p[0],y=p[1]-.034-.073*drop*(1-.55*t);
+      const target=facialDepth(x,y);
+      return [x,y,mix(p[2]-.009,target,drop)];
+    },42,5,[.40-band*.038,.42-band*.038,.43-band*.038]);
+    line(t=>lip(sign,t),t=>.011-.004*t,[.043,.050,.060]);
+    line(t=>{const p=lip(sign,t);return [p[0],p[1]-.036*(1-t*t),p[2]-.007];},t=>.009-.004*t,[.10,.115,.12]);
+    // Only the tips clear the closed lips. Roots are buried in the muzzle;
+    // small irregular teeth avoid a bright human-like horseshoe of enamel.
+    shape((u,v)=>{const a=u*TAU,r=.011*(1-v)**.7;return [.038+sign*(.115-.010*v)+r*Math.cos(a),-.435-.053*v,.620+.006*Math.sin(v*Math.PI)+r*Math.sin(a)];},24,16,[.62,.64,.59]);
   }
-  for(let i=0;i<6;i++) {
-    const x=.038+(i-2.5)*.031;
-    const edge=Math.abs(i-2.5)/2.5;
-    for(const upper of [true,false]) shape((u,v)=>{
-      const a=u*TAU,b=v*Math.PI;
-      return [x+.0082*Math.cos(a)*Math.sin(b),(upper?-.459+.014*edge:-.547+.022*edge)+(.0075+(i%3)*.001)*Math.sin(a)*Math.sin(b),.608+(upper?.015:.003)-.015*edge+.010*Math.cos(b)];
-    },16,12,upper?[.72,.78,.80]:[.58,.65,.68]);
+  for(let i=0;i<4;i++) {
+    const x=.038+(i-1.5)*.019;
+    shape((u,v)=>{const a=u*TAU,b=v*Math.PI;return [x+.006*Math.cos(a)*Math.sin(b),-.452+.004*Math.sin(a)*Math.sin(b),.621+.005*Math.cos(b)];},16,10,[.37,.39,.37]);
   }
 
-  // The bitten stem is in front of the lips but behind the canines.
-  line(t=>[mix(-.48,.79,t),-.407+.019*t,.585-.025*t],()=>.008,[.11,.12,.065],100);
-  line(t=>[mix(.33,.51,t),-.402+.027*Math.sin(t*Math.PI),.554],t=>.0025*Math.sin(t*Math.PI),[.20,.22,.09],30);
+  // A single orthonormal growth frame connects stem, calyx and folded petals.
+  // Its axis points predominantly left (-X), with a forward lean that lets
+  // the front view still see into the flower rather than an edge-on disk.
+  const flowerAxis: V=[-.766,-.080,.638];
+  const flowerAcross: V=[.6400,0,.7684];
+  const flowerUp: V=[-.0615,.9968,.0512];
+  const rosePoint = (p: V): V => [0,1,2].map(k=>
+    [-.590,-.454,.650][k]+flowerAcross[k]*p[0]*1.08+flowerUp[k]*p[1]*1.03+flowerAxis[k]*p[2]
+  ) as V;
+  // The stem passes through the lip seam and under the canine tips. At the
+  // flower end it curves into the calyx along the flower's actual growth axis.
+  // Shared frame makes this cubic tangent exactly opposite the growth axis.
+  const control: V[]=[rosePoint([0,0,-.070]),rosePoint([0,0,-.120]),[-.20,-.452,.588],[.79,-.431,.595]];
+  const stem = (t: number): V => {
+    return [0,1,2].map(k=>(1-t)**3*control[0][k]+3*(1-t)**2*t*control[1][k]+3*(1-t)*t*t*control[2][k]+t**3*control[3][k]) as V;
+  };
+  line(stem,()=>.007,[.13,.15,.065],100);
+  line(t=>[mix(.33,.51,t),-.443+.027*Math.sin(t*Math.PI),.586],t=>.0025*Math.sin(t*Math.PI),[.20,.22,.09],30);
 
-  // A tilted, three-dimensional rose with a visible spiral heart, cupped
-  // middle petals and individually furled outer lips. Gaps stay dark.
-  const rose = (p: V): V => project([-.612+p[0]*.90-p[2]*.24,-.439+p[1]*1.02+p[2]*.34,.39+p[0]*.17-p[1]*.34+p[2]*.925]);
+  const rose = (p: V): V => project(rosePoint(p));
+  // The calyx narrows to the stem at local -Z, not the side of the bloom.
+  line(t=>rosePoint([0,0,mix(-.070,-.019,t)]),t=>mix(.008,.030,t),[.08,.13,.045],24);
   const petalSurface = (fn: Surface, color: V, nu=36,nv=24) => surface((u,v)=>rose(fn(u,v)),nu,nv,color);
   // Broad, individually composed velvet folds. Unequal angular spacing and
   // open side seams avoid the concentric-ring silhouette of a polar flower.
