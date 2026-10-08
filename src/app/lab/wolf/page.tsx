@@ -91,6 +91,9 @@ export default function WolfPage() {
     let paused = false;
     let yaw = 0.20;
     let pitch = -0.04;
+    let turnX = 0;
+    let turnY = 0;
+    let drag: { id: number; x: number; y: number; yaw: number; pitch: number; moved: boolean } | null = null;
     const pointer = { x: 0, y: 0, strength: 0, target: 0, tiltX: 0, tiltY: 0 };
     const origin = { x: 0, y: 0 };
     const shaders: WebGLShader[] = [];
@@ -112,11 +115,11 @@ export default function WolfPage() {
       burstAge += dt;
       const easing = 1 - Math.exp(-dt * 8);
       pointer.strength += (pointer.target - pointer.strength) * easing;
-      const targetYaw = 0.20 + (reduced || paused ? 0 : Math.sin(elapsed * 0.34) * 0.30) + pointer.tiltX;
-      const targetPitch = -0.04 + (reduced || paused ? 0 : Math.sin(elapsed * 0.27) * 0.09) + pointer.tiltY;
+      const targetYaw = 0.20 + (reduced || paused ? 0 : Math.sin(elapsed * 0.34) * 0.30) + turnX + pointer.tiltX;
+      const targetPitch = -0.04 + (reduced || paused ? 0 : Math.sin(elapsed * 0.27) * 0.09) + turnY + pointer.tiltY;
       yaw += (targetYaw - yaw) * easing;
       pitch += (targetPitch - pitch) * easing;
-      const burst = (1 - Math.exp(-burstAge * 9)) * Math.exp(-burstAge * 1.15) * (reduced ? 0.10 : 1.6);
+      const burst = (1 - Math.exp(-burstAge * 9)) * Math.exp(-burstAge * 1.15) * (reduced ? 0.08 : 0.35);
       // Bound both fill rate and geometry on phones/high-DPR displays.
       const ratio = Math.min(window.devicePixelRatio || 1, 1.75, 1900 / Math.max(canvas.clientWidth, canvas.clientHeight));
       const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
@@ -164,7 +167,7 @@ export default function WolfPage() {
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("Renderer unavailable");
         gl.useProgram(program);
         const sample = document.createElement("canvas");
-        sample.width = window.matchMedia("(max-width: 600px)").matches ? 176 : 224;
+        sample.width = window.matchMedia("(max-width: 600px)").matches ? 256 : 336;
         sample.height = Math.round(sample.width * image.naturalHeight / image.naturalWidth);
         const ctx = sample.getContext("2d");
         if (!ctx) throw new Error("Image sampling unavailable");
@@ -269,9 +272,23 @@ export default function WolfPage() {
       const aspect = rect.width / rect.height;
       pointer.x = nx / (aspect > 1 ? 0.86 / aspect : 0.86);
       pointer.y = ny / (aspect > 1 ? 0.86 : 0.86 * aspect);
-      pointer.target = reduced ? 0.4 : 1;
-      pointer.tiltX = nx * (reduced ? 0.20 : 0.55);
-      pointer.tiltY = -ny * (reduced ? 0.12 : 0.28);
+      if (drag && drag.id === event.pointerId) {
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (Math.hypot(dx, dy) > 6) drag.moved = true;
+        if (drag.moved) {
+          turnX = drag.yaw + dx / Math.min(rect.width, rect.height) * Math.PI * 2;
+          turnY = Math.max(-1.4, Math.min(1.4, drag.pitch + dy / Math.min(rect.width, rect.height) * Math.PI));
+          pointer.target = 0;
+          pointer.tiltX = 0;
+          pointer.tiltY = 0;
+          schedule();
+          return;
+        }
+      }
+      pointer.target = reduced ? 0.08 : 0.12;
+      pointer.tiltX = nx * (reduced ? 0.03 : 0.05);
+      pointer.tiltY = -ny * (reduced ? 0.02 : 0.03);
       schedule();
     };
     const leave = () => {
@@ -287,8 +304,22 @@ export default function WolfPage() {
       canvas.dataset.bursts = String(++burstCount);
       schedule();
     };
-    const down = (event: PointerEvent) => { move(event); explode(); };
-    const up = (event: PointerEvent) => { if (event.pointerType !== "mouse") leave(); };
+    const down = (event: PointerEvent) => {
+      if (event.button !== 0 || drag) return;
+      move(event);
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, yaw: turnX, pitch: turnY, moved: false };
+      canvas.setPointerCapture(event.pointerId);
+    };
+    const up = (event: PointerEvent) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      move(event);
+      const tapped = !drag.moved;
+      drag = null;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (tapped) explode();
+      if (event.pointerType !== "mouse") leave();
+    };
+    const cancel = () => { drag = null; leave(); };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Enter") { event.preventDefault(); explode(); }
       if (event.key === " ") { event.preventDefault(); paused = !paused; schedule(); }
@@ -305,7 +336,7 @@ export default function WolfPage() {
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointerup", up);
-    canvas.addEventListener("pointercancel", leave);
+    canvas.addEventListener("pointercancel", cancel);
     canvas.addEventListener("pointerleave", leave);
     canvas.addEventListener("keydown", key);
     document.addEventListener("visibilitychange", visibility);
@@ -318,7 +349,7 @@ export default function WolfPage() {
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
-      canvas.removeEventListener("pointercancel", leave);
+      canvas.removeEventListener("pointercancel", cancel);
       canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("keydown", key);
       canvas.removeEventListener("webglcontextlost", onLost);
@@ -331,14 +362,14 @@ export default function WolfPage() {
   }, []);
 
   return <main className={styles.page}>
-    {/* The original is only a loading/unsupported-graphics fallback, never an overlay. */}
+    {/* The original appears only if graphics fail; startup remains particle-only. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img className={styles.fallback} style={{ opacity: ready && !failed ? 0 : 1 }}
+    <img className={styles.fallback} style={{ opacity: failed ? 1 : 0 }}
       src="/brand/the-powerful-man-wolf.png" alt="Wolf with blue eyes holding a red rose"
-      aria-hidden={ready && !failed} />
+      aria-hidden={!failed} />
     <canvas ref={canvasRef} className={styles.canvas} data-ready={ready && !failed}
       data-bursts="0" tabIndex={ready && !failed ? 0 : -1} role="img" aria-hidden={!ready || failed}
-      aria-label="Interactive three-dimensional wolf made of moving particles. Move to turn and disturb the particles. Click, tap or press Enter to scatter them. Press Space to pause motion."
+      aria-label="Interactive three-dimensional wolf made of moving particles. Drag to rotate the volume. Click, tap or press Enter for a small particle burst. Press Space to pause motion."
       style={{ opacity: failed ? 0 : 1 }} />
   </main>;
 }
