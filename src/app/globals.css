@@ -416,6 +416,7 @@ html[data-palette="iron"][data-theme="light"] {
 /* True Greyscale: neutral UI tokens, including territories and feedback.
    Existing palettes retain their original tokens and territory colors. */
 html[data-palette="greyscale"] {
+  accent-color: var(--gold);
   --gold: #d4d4d4;
   --gold-dim: #a3a3a3;
   --gold-bg: rgba(212, 212, 212, 0.08);
@@ -485,7 +486,8 @@ html[data-palette="greyscale"][data-theme="light"] {
 
 /* Only decorative emoji and palette previews, never user images/media. */
 html[data-palette="greyscale"] .theme-emoji,
-html[data-palette="greyscale"] .palette-preview {
+html[data-palette="greyscale"] .palette-preview,
+html[data-palette="greyscale"] .google-logo {
   filter: grayscale(1);
 }
 html[data-palette="greyscale"] .btn-gold:hover {
@@ -643,4 +645,9 @@ textarea {
 /* ── Theme transition (smooth bg swap on palette change) ── */
 html {
   transition: background-color 0.35s ease;
+}
+
+html[data-palette="greyscale"] ::selection {
+  background: var(--gold-border-strong);
+  color: var(--text);
 }
