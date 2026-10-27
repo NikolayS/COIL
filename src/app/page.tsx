@@ -94,12 +94,12 @@ interface ArchivedWeek {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const TERRITORIES: { key: TerritoryKey; label: string; color: string; textColor: string }[] = [
-  { key: "self", label: "Self", color: "#4a9e6b", textColor: "text-[#4a9e6b]" },
-  { key: "health", label: "Health", color: "#c85555", textColor: "text-[#c85555]" },
-  { key: "wealth", label: "Wealth", color: "#4a7fc1", textColor: "text-[#4a7fc1]" },
-  { key: "relationships", label: "Relationships", color: "#c9873a", textColor: "text-[#c9873a]" },
-  { key: "business", label: "Business", color: "#8b5cf6", textColor: "text-[#8b5cf6]" },
+const TERRITORIES: { key: TerritoryKey; label: string; color: string; borderColor: string }[] = [
+  { key: "self", label: "Self", color: "var(--territory-ink, #4a9e6b)", borderColor: "var(--territory-border, #4a9e6b70)" },
+  { key: "health", label: "Health", color: "var(--territory-ink, #c85555)", borderColor: "var(--territory-border, #c8555570)" },
+  { key: "wealth", label: "Wealth", color: "var(--territory-ink, #4a7fc1)", borderColor: "var(--territory-border, #4a7fc170)" },
+  { key: "relationships", label: "Relationships", color: "var(--territory-ink, #c9873a)", borderColor: "var(--territory-border, #c9873a70)" },
+  { key: "business", label: "Business", color: "var(--territory-ink, #8b5cf6)", borderColor: "var(--territory-border, #8b5cf670)" },
 ];
 
 const WOLF_MODES: { key: WolfMode; label: string }[] = [
@@ -508,7 +508,7 @@ function CommitmentRow({
   return (
     <div
       className="rounded-xl border bg-[--bg-card] px-3 py-3"
-      style={{ borderColor: completed ? territory.color + "70" : "var(--border)" }}
+      style={{ borderColor: completed ? territory.borderColor : "var(--border)" }}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: territory.color }} />
@@ -536,7 +536,7 @@ function CommitmentRow({
               backgroundColor: completed ? territory.color : "transparent",
             }}
           >
-            {completed && <Check size={16} color="#fff" />}
+            {completed && <Check size={16} color="var(--on-territory, #fff)" />}
           </button>
         )}
       </div>
@@ -603,7 +603,7 @@ function CountCounter({
 }) {
   return (
     <div>
-      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3">{label}</p>
+      <p className="text-xs font-mono tracking-[0.15em] text-[--text-muted] uppercase mb-3 theme-emoji">{label}</p>
       <div className="bg-[--bg-card] rounded-xl px-4 py-3 border border-[--border] space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -640,14 +640,14 @@ function BooleanTrackerRow({ label, emoji, checked, onToggle }: { label: string;
       className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl bg-[--bg-card] border border-[--border] active:bg-[--bg-card-hover]"
       style={{ borderColor: checked ? "var(--gold-border)" : undefined }}
     >
-      <span className="text-[15px] font-medium tracking-wide">{emoji} {label}</span>
+      <span className="text-[15px] font-medium tracking-wide"><span className="theme-emoji">{emoji}</span> {label}</span>
       <div
         className="w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200"
         style={{ borderColor: "var(--gold)", backgroundColor: checked ? "var(--gold)" : "transparent" }}
       >
         {checked && (
           <svg className="check-icon" width="12" height="9" viewBox="0 0 12 9" fill="none">
-            <path d="M1 4L4.5 7.5L11 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M1 4L4.5 7.5L11 1" stroke="var(--on-territory, #fff)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
       </div>
@@ -659,7 +659,7 @@ function RatingTrackerRow({ label, emoji, value, onChange }: { label: string; em
   return (
     <div className="rounded-xl bg-[--bg-card] border border-[--border] px-4 py-3">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[15px] font-medium tracking-wide">{emoji} {label}</span>
+        <span className="text-[15px] font-medium tracking-wide"><span className="theme-emoji">{emoji}</span> {label}</span>
         <span className="text-xs font-mono text-[--text-faint]">{value > 0 ? `${value}/5` : "Not rated"}</span>
       </div>
       <div className="grid grid-cols-5 gap-2">
@@ -1123,7 +1123,7 @@ function WeeklyTab({ pdfReady, data, onChange, trackerSettings, user, phase, onP
           const pct = (score / 7) * 100;
           return (
             <div key={t.key} className="flex items-center gap-3">
-              <span className={`text-sm font-medium w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
+              <span className="text-sm font-medium w-24 flex-shrink-0" style={{ color: t.color }}>{t.label}</span>
               <div className="flex-1 h-2.5 bg-[--bg] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
@@ -1147,7 +1147,7 @@ function WeeklyTab({ pdfReady, data, onChange, trackerSettings, user, phase, onP
               : `${values.reduce<number>((sum, value) => sum + Number(value), 0)}${tracker.unit ? ` ${tracker.unit}` : ""} this week`;
           return (
             <div key={tracker.id} className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-[--text-muted]">{tracker.emoji} {tracker.label}</span>
+              <span className="text-[--text-muted]"><span className="theme-emoji">{tracker.emoji}</span> {tracker.label}</span>
               <span className="font-mono text-xs text-[--text] text-right">{summary}</span>
             </div>
           );
@@ -1398,7 +1398,7 @@ function ExportTab({
               ready={pdfReady && validRange}
               label="Prepare consolidated PDF"
             />
-            {!validRange && <p role="alert" className="text-xs text-red-400">Choose a valid date range.</p>}
+            {!validRange && <p role="alert" className="text-xs text-[color:var(--red,var(--color-red-400))]">Choose a valid date range.</p>}
 
           </div>
         )}
@@ -1472,7 +1472,7 @@ function PastWeeksTab({ archive }: { archive: ArchivedWeek[] }) {
                   const s = calcTerritoryScore(week.data, t.key);
                   return (
                     <div key={t.key} className="flex items-center gap-3">
-                      <span className={`text-xs w-24 flex-shrink-0 ${t.textColor}`}>{t.label}</span>
+                      <span className="text-xs w-24 flex-shrink-0" style={{ color: t.color }}>{t.label}</span>
                       <div className="flex-1 h-1 bg-[--bg] rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${(s / 7) * 100}%`, backgroundColor: t.color }} />
                       </div>
@@ -1693,7 +1693,7 @@ function PlanTab({ user, timeZone }: { user: User | null; timeZone: string }) {
         ))}
       </div>
 
-      {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+      {saveError && <p className="text-sm text-[color:var(--red,var(--color-red-400))]">{saveError}</p>}
       <button
         type="button"
         onClick={saveCycle}
@@ -2103,7 +2103,7 @@ function ReviewTab({
           <p className="text-sm text-[--text-muted]">
             {evidenceStatus === "loading" ? "Loading complete review evidence…" : "Review evidence is unavailable."}
           </p>
-          {evidenceError && <p className="mt-2 text-xs text-red-400">{evidenceError}</p>}
+          {evidenceError && <p className="mt-2 text-xs text-[color:var(--red,var(--color-red-400))]">{evidenceError}</p>}
         </div>
       ) : type === "month" ? (
         <div className="space-y-3">
@@ -2209,7 +2209,7 @@ function ReviewTab({
                 {monthlyEvidence.trackers.map((tracker) => (
                   <details key={tracker.id} className="rounded-xl bg-[--bg] px-3 py-2 text-sm">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
-                      <span>{tracker.emoji} {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
+                      <span><span className="theme-emoji">{tracker.emoji}</span> {tracker.label}</span><span className="font-mono text-xs text-[--gold]">{tracker.summary}</span>
                     </summary>
                     <div className="mt-2 border-t border-[--border] pt-2 text-[11px] leading-5 text-[--text-faint]">
                       {tracker.entries.length > 0
@@ -2310,7 +2310,7 @@ function ReviewTab({
         ))
       )}
 
-      {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+      {saveError && <p className="text-sm text-[color:var(--red,var(--color-red-400))]">{saveError}</p>}
       <button
         type="button"
         onClick={() => void saveReview(type === "month" && monthlyPhase === "plan")}
@@ -2392,7 +2392,7 @@ export default function CoilApp() {
   const [activeTab, setActiveTab] = useState<TabKey>(initTab);
   const [activeView, setActiveView] = useState<AppView>(initView);
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale">("gold");
   const [user, setUser] = useState<User | null>(null);
   const [weekStart, setWeekStart] = useState<"monday" | "sunday">("monday");
   const [timeZone, setTimeZone] = useState("UTC");
@@ -2421,7 +2421,7 @@ export default function CoilApp() {
     document.documentElement.setAttribute("data-theme", resolved);
   };
 
-  const applyPalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
+  const applyPalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale") => {
     document.documentElement.setAttribute("data-palette", p);
   };
 
@@ -2429,7 +2429,7 @@ export default function CoilApp() {
     const saved = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(saved);
     applyTheme(saved);
-    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale") || "gold";
     setPalette(savedPalette);
     applyPalette(savedPalette);
 
@@ -2637,7 +2637,7 @@ export default function CoilApp() {
       <div className="min-h-screen bg-[--bg] flex items-center justify-center">
         {weekLoadError ? (
           <div className="space-y-4 text-center">
-            <p className="text-sm text-red-400">Could not load this week: {weekLoadError}</p>
+            <p className="text-sm text-[color:var(--red,var(--color-red-400))]">Could not load this week: {weekLoadError}</p>
             <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-[--border] px-4 py-2 text-sm text-[--text-muted]">Retry</button>
           </div>
         ) : (

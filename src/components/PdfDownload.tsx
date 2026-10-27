@@ -60,6 +60,6 @@ export function PdfDownload({ url, filename, ready, revision = "", beforePrepare
       {busy ? "Saving & preparing…" : file ? "Save PDF" : label}
     </button>
     {file && <p className="text-center text-xs text-[--text-faint] mt-1.5">PDF ready. Tap Save PDF, then choose Save to Files. Cancel returns here.</p>}
-    {error && <p role="alert" className="text-center text-xs mt-1.5 text-red-400">{error}</p>}
+    {error && <p role="alert" className="text-center text-xs mt-1.5 text-[color:var(--red,var(--color-red-400))]">{error}</p>}
   </div>;
 }
