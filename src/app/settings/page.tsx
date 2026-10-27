@@ -69,7 +69,7 @@ function EmojiButton({ value, open, onToggle }: { value: string; open: boolean; 
         borderColor: open ? "var(--gold)" : "var(--border)",
       }}
     >
-      {value || "🎯"}
+      <span className="theme-emoji">{value || "🎯"}</span>
     </button>
   );
 }
@@ -79,7 +79,7 @@ function SettingsInner() {
   const [loading, setLoading] = useState(true);
   // ── Appearance (theme + palette) — local only, not saved to Supabase ──
   const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron">("gold");
+  const [palette, setPalette] = useState<"gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale">("gold");
 
   const applyTheme = (t: "dark" | "light" | "system") => {
     const resolved = t === "system"
@@ -95,7 +95,7 @@ function SettingsInner() {
   useEffect(() => {
     const savedTheme = (localStorage.getItem("coil_theme") as "dark" | "light" | "system") || "system";
     setTheme(savedTheme);
-    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron") || "gold";
+    const savedPalette = (localStorage.getItem("coil_palette") as "gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale") || "gold";
     setPalette(savedPalette);
   }, []);
 
@@ -105,18 +105,19 @@ function SettingsInner() {
     localStorage.setItem("coil_theme", t);
   };
 
-  const handlePalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron") => {
+  const handlePalette = (p: "gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale") => {
     setPalette(p);
     applyPalette(p);
     localStorage.setItem("coil_palette", p);
   };
 
-  const PALETTES: { id: "gold" | "ocean" | "midnight" | "ember" | "iron"; label: string; darkBg: string; lightBg: string; darkAccent: string; lightAccent: string }[] = [
+  const PALETTES: { id: "gold" | "ocean" | "midnight" | "ember" | "iron" | "greyscale"; label: string; darkBg: string; lightBg: string; darkAccent: string; lightAccent: string }[] = [
     { id: "gold",     label: "Gold",     darkBg: "#1a1a18", lightBg: "#f5f2ec", darkAccent: "#c9a84c", lightAccent: "#9a7230" },
     { id: "ocean",    label: "Ocean",    darkBg: "#0a1628", lightBg: "#d6e8f5", darkAccent: "#38b2e0", lightAccent: "#0e6fa0" },
     { id: "midnight", label: "Midnight", darkBg: "#100c1e", lightBg: "#e0d8f8", darkAccent: "#a78bfa", lightAccent: "#5b21b6" },
     { id: "ember",    label: "Ember",    darkBg: "#160a06", lightBg: "#f5ede8", darkAccent: "#c24b2a", lightAccent: "#b03a1e" },
     { id: "iron",     label: "Iron",     darkBg: "#0e1014", lightBg: "#e8ecf2", darkAccent: "#8a9bb0", lightAccent: "#4a6080" },
+    { id: "greyscale", label: "Greyscale", darkBg: "#181818", lightBg: "#f5f5f5", darkAccent: "#d4d4d4", lightAccent: "#525252" },
   ];
 
   const [saving, setSaving] = useState(false);
@@ -303,7 +304,7 @@ function SettingsInner() {
     return (
       <div className="min-h-screen bg-[--bg] flex items-center justify-center">
         <div className="space-y-4 text-center">
-          <p className="text-sm text-red-400">Could not load settings: {loadError}</p>
+          <p className="text-sm text-[color:var(--red,var(--color-red-400))]">Could not load settings: {loadError}</p>
           <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-[--border] px-4 py-2 text-sm text-[--text-muted]">Retry</button>
         </div>
       </div>
@@ -366,7 +367,7 @@ function SettingsInner() {
             {/* Theme swatches */}
             <div>
               <p className="text-xs text-[--text-dim] mb-3">Color theme</p>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                 {PALETTES.map((p) => {
                   const isActive = palette === p.id;
                   const isDark = theme === "dark" || (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -383,7 +384,7 @@ function SettingsInner() {
                     >
                       {/* Swatch */}
                       <div
-                        className="w-full rounded-xl transition-all duration-200 relative overflow-hidden"
+                        className="palette-preview w-full rounded-xl transition-all duration-200 relative overflow-hidden"
                         style={{
                           height: 44,
                           backgroundColor: bgColor,
@@ -453,7 +454,7 @@ function SettingsInner() {
                 const typeLabel = tracker.type === "boolean" ? "YES / NO" : tracker.type === "counter" ? "COUNT" : "1–5";
                 return (
                   <div key={tracker.id} className="rounded-xl px-3 py-3 bg-[--bg] border border-[--border] flex items-center gap-3">
-                    <span className="text-xl w-7 text-center flex-shrink-0">{tracker.emoji}</span>
+                    <span className="theme-emoji text-xl w-7 text-center flex-shrink-0">{tracker.emoji}</span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-[--text] truncate">{tracker.label}</p>
                       <p className="text-[10px] font-mono tracking-wider text-[--text-faint] mt-0.5">
@@ -464,7 +465,7 @@ function SettingsInner() {
                       <button
                         onClick={() => removeTracker(tracker.id)}
                         aria-label={`Delete ${tracker.label}`}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[--text-faint] hover:text-red-400"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[--text-faint] hover:text-[color:var(--red,var(--color-red-400))]"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -537,7 +538,7 @@ function SettingsInner() {
                             outline: trackerDraft.emoji === emoji ? "1px solid var(--gold)" : "none",
                           }}
                         >
-                          {emoji}
+                          <span className="theme-emoji">{emoji}</span>
                         </button>
                       ))}
                     </div>

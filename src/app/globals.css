@@ -412,6 +412,89 @@ html[data-palette="iron"][data-theme="light"] {
   --shadow-card: 0 1px 4px rgba(0,10,20,0.1), 0 1px 2px rgba(0,10,20,0.06);
 }
 
+
+/* True Greyscale: neutral UI tokens, including territories and feedback.
+   Existing palettes retain their original tokens and territory colors. */
+html[data-palette="greyscale"] {
+  --gold: #d4d4d4;
+  --gold-dim: #a3a3a3;
+  --gold-bg: rgba(212, 212, 212, 0.08);
+  --gold-bg-hover: rgba(212, 212, 212, 0.14);
+  --gold-border: rgba(212, 212, 212, 0.3);
+  --gold-border-strong: rgba(212, 212, 212, 0.5);
+  --bg: #181818;
+  --bg-card: #222222;
+  --bg-card-hover: #292929;
+  --bg-input: #1c1c1c;
+  --bg-elevated: #303030;
+  --border: #3b3b3b;
+  --border-subtle: #2d2d2d;
+  --text: #eeeeee;
+  --text-secondary: #c7c7c7;
+  --text-muted: #aaaaaa;
+  --text-dim: #999999;
+  --text-faint: #888888;
+  --territory-ink: #bdbdbd;
+  --territory-border: rgba(189, 189, 189, 0.44);
+  --on-territory: #181818;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --self: var(--territory-ink);
+  --health: var(--territory-ink);
+  --relationships: var(--territory-ink);
+  --wealth: var(--territory-ink);
+  --business: var(--territory-ink);
+  --self-bg: var(--gold-bg);
+  --health-bg: var(--gold-bg);
+  --relationships-bg: var(--gold-bg);
+  --wealth-bg: var(--gold-bg);
+  --business-bg: var(--gold-bg);
+  --self-border: var(--territory-border);
+  --health-border: var(--territory-border);
+  --relationships-border: var(--territory-border);
+  --wealth-border: var(--territory-border);
+  --business-border: var(--territory-border);
+  --green: var(--text);
+  --red: var(--text);
+  --error: var(--text);
+}
+
+html[data-palette="greyscale"][data-theme="light"] {
+  --gold: #525252;
+  --gold-dim: #737373;
+  --gold-bg: rgba(82, 82, 82, 0.08);
+  --gold-bg-hover: rgba(82, 82, 82, 0.14);
+  --gold-border: rgba(82, 82, 82, 0.3);
+  --gold-border-strong: rgba(82, 82, 82, 0.5);
+  --bg: #f5f5f5;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafafa;
+  --bg-input: #ededed;
+  --bg-elevated: #ffffff;
+  --border: #d4d4d4;
+  --border-subtle: #e5e5e5;
+  --text: #171717;
+  --text-secondary: #404040;
+  --text-muted: #5c5c5c;
+  --text-dim: #666666;
+  --text-faint: #737373;
+  --territory-ink: #525252;
+  --territory-border: rgba(82, 82, 82, 0.44);
+  --on-territory: #ffffff;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Only decorative emoji and palette previews, never user images/media. */
+html[data-palette="greyscale"] .theme-emoji,
+html[data-palette="greyscale"] .palette-preview {
+  filter: grayscale(1);
+}
+html[data-palette="greyscale"] .btn-gold:hover {
+  box-shadow: 0 0 20px var(--gold-border);
+}
+html[data-palette="greyscale"] :focus-visible {
+  outline-color: var(--gold);
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
